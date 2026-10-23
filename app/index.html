@@ -1,0 +1,180 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PixelForge Studio - Free Local Pixel Snapper & AI Pipeline</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo">
+        <span class="logo-icon">&#9632;</span>
+        <h1>PIXEL<span>FORGE</span> <small>STUDIO v1.0 [FREE LOCAL EDITION]</small></h1>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-accent">100% OFFLINE</span>
+        <span class="badge">NO AI MIXELS</span>
+        <span class="badge badge-neon">STREETS OF REGEX COMPATIBLE</span>
+      </div>
+    </header>
+
+    <nav class="app-tabs">
+      <button class="tab-btn active" data-tab="tab-snapper">Pixel Snapper Studio</button>
+      <button class="tab-btn" data-tab="tab-prompt">Nano-Banana Prompt Lab</button>
+      <button class="tab-btn" data-tab="tab-comfy">ComfyUI Dual Pipeline Guide</button>
+    </nav>
+
+    <!-- TAB 1: PIXEL SNAPPER -->
+    <main class="tab-content active" id="tab-snapper">
+      <div class="workbench">
+        <!-- LEFT: CONTROLS PANEL -->
+        <aside class="panel controls-panel">
+          <div class="panel-header">
+            <h2>PROCESSING CONTROLS</h2>
+          </div>
+          
+          <div class="control-group">
+            <label for="colorCount">COLOR BUDGET (K-MEANS): <span id="colorCountVal">16</span></label>
+            <input type="range" id="colorCount" min="4" max="64" step="4" value="16">
+            <div class="ticks"><span>4</span><span>16</span><span>32</span><span>64</span></div>
+          </div>
+
+          <div class="control-group">
+            <label for="targetGrid">TARGET GRID SIZE: <span id="targetGridVal">64x64</span></label>
+            <select id="targetGrid">
+              <option value="64" selected>64x64 (Streets of Regex Standard)</option>
+              <option value="32">32x32 (Classic 16-bit)</option>
+              <option value="16">16x16 (Retro 8-bit)</option>
+              <option value="128">128x128 (High-Res Prop)</option>
+              <option value="0">Auto-Detect Implicit Grid</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label for="paletteSelect">COLOR PALETTE PRESET:</label>
+            <select id="paletteSelect">
+              <option value="auto" selected>Auto K-Means (Image Optimal)</option>
+              <option value="cyberpunk16">Streets of Regex Cyberpunk (16)</option>
+              <option value="endesga32">Endesga 32 (Industry Standard)</option>
+              <option value="db32">DawnBringer 32 (Dark Retro)</option>
+              <option value="pico8">Pico-8 (16 Colors)</option>
+              <option value="gameboy">Game Boy Classic (4 Shades)</option>
+            </select>
+            <div class="palette-preview" id="palettePreview"></div>
+          </div>
+
+          <div class="control-group checkbox-group">
+            <label><input type="checkbox" id="renderGridLines" checked> Show Pixel Grid Overlay</label>
+            <label><input type="checkbox" id="snapAlpha" checked> Clean Alpha Mask (Hard Binary)</label>
+          </div>
+
+          <div class="action-buttons">
+            <button class="btn btn-primary" id="btnProcess">SNAP & QUANTIZE</button>
+            <button class="btn btn-secondary" id="btnDownload" disabled>DOWNLOAD 64x64 PNG</button>
+          </div>
+
+          <div class="batch-section">
+            <div class="panel-header">
+              <h3>BATCH FILE QUEUE (<span id="batchCount">0</span>)</h3>
+            </div>
+            <ul class="batch-list" id="batchList">
+              <li class="empty-hint">Drop multiple files or a folder to batch process.</li>
+            </ul>
+            <button class="btn btn-accent" id="btnProcessBatch" disabled>PROCESS ALL IN QUEUE</button>
+          </div>
+        </aside>
+
+        <!-- RIGHT: INTERACTIVE VIEWER -->
+        <section class="panel viewer-panel">
+          <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
+            <div class="drop-prompt" id="dropPrompt">
+              <div class="drop-icon">&#8681;</div>
+              <p><strong>DROP AI IMAGE OR CLICK TO BROWSE</strong></p>
+              <p><small>Accepts 1024x1024 / 512x512 images from Gemini, Nano-Banana, or ComfyUI</small></p>
+            </div>
+
+            <div class="canvas-wrapper" id="canvasWrapper" style="display:none;">
+              <canvas id="mainCanvas"></canvas>
+              <div class="split-slider-bar" id="splitBar">
+                <div class="slider-handle">&#8596;</div>
+              </div>
+              <div class="view-stats" id="viewStats">
+                <span>Original: <b id="origRes">-</b></span>
+                <span>Snapped: <b id="snappedRes">-</b></span>
+                <span>Colors: <b id="activeColors">-</b></span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- TAB 2: NANO-BANANA PROMPT LAB -->
+    <section class="tab-content" id="tab-prompt">
+      <div class="prompt-lab-container">
+        <h2>NANO-BANANA (GEMINI) GAME ASSET PROMPT GENERATOR</h2>
+        <p>Use these prompts in Gemini to generate orthogonal concepts with zero camera tilt before running them through Pixel Snapper.</p>
+
+        <div class="prompt-cards-grid">
+          <div class="prompt-card">
+            <h3>Cyberpunk Blast Door (Split Horizontal)</h3>
+            <p class="prompt-text">16-bit retro arcade pixel art sprite of an industrial cyberpunk sliding blast door, split down the middle with heavy interlocking steel teeth. Straight flat orthogonal front view, 2D top-down game perspective, perfectly symmetrical. Dark metallic navy panels, prominent yellow and black diagonal hazard warning stripes, glowing neon cyan wiring tubes running vertically along the frame, recessed electronic keycard terminal. Solid plain black background, crisp pixel edges, limited vibrant 80s arcade color palette.</p>
+            <button class="btn btn-copy" onclick="copyCardPrompt(this)">COPY PROMPT</button>
+          </div>
+
+          <div class="prompt-card">
+            <h3>Hacking Terminal Console (Prop)</h3>
+            <p class="prompt-text">16-bit pixel art sprite of a standing futuristic server terminal rack with glowing green CRT monitor displaying scrolling regular expression code, exposed colored ribbon cables, blinking red status LEDs, dark brushed titanium casing. Flat 2D front view, no angled perspective, solid magenta background.</p>
+            <button class="btn btn-copy" onclick="copyCardPrompt(this)">COPY PROMPT</button>
+          </div>
+
+          <div class="prompt-card">
+            <h3>Street Roadblock Barricade</h3>
+            <p class="prompt-text">16-bit pixel art sprite of a heavy concrete and steel street roadblock barrier with flashing amber emergency strobe lights. Perfectly flat straight-on view, 2D top-down game asset. Scratched weathered concrete base, yellow hazard stripes, warning stencils. Solid flat black background.</p>
+            <button class="btn btn-copy" onclick="copyCardPrompt(this)">COPY PROMPT</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: COMFYUI DUAL PIPELINE GUIDE -->
+    <section class="tab-content" id="tab-comfy">
+      <div class="guide-container">
+        <h2>PROVEN COMFYUI DUAL CONFIGURATION (RTX 5060 Ti 16GB)</h2>
+        <div class="pipeline-comparison">
+          <div class="pipeline-box">
+            <h3>PROFILE A: FAST PROTOTYPE (SD 1.5)</h3>
+            <ul>
+              <li><strong>Speed:</strong> 0.8 - 1.2s per generation</li>
+              <li><strong>Model:</strong> <code>v1-5-pruned-emaonly.safetensors</code></li>
+              <li><strong>ControlNet:</strong> <code>control_v11f1p_sd15_depth.pth</code> (strength 0.9)</li>
+              <li><strong>LoRA:</strong> Pixel Art LoRA (strength 0.75)</li>
+              <li><strong>Resolution:</strong> 512x512</li>
+              <li><strong>Final Node:</strong> Sprite Fusion Pixel Snapper (k=16)</li>
+            </ul>
+          </div>
+          <div class="pipeline-box">
+            <h3>PROFILE B: ULTRA FIDELITY (SDXL)</h3>
+            <ul>
+              <li><strong>Speed:</strong> 5.0 - 7.5s per generation</li>
+              <li><strong>Model:</strong> <code>juggernautXL_v9</code> or <code>realvisxlV40</code></li>
+              <li><strong>ControlNet:</strong> <code>controlnet-depth-sdxl-1.0</code></li>
+              <li><strong>LoRA:</strong> PixelArtXL (strength 0.8)</li>
+              <li><strong>Resolution:</strong> 1024x1024</li>
+              <li><strong>Final Node:</strong> Sprite Fusion Pixel Snapper (k=24)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
