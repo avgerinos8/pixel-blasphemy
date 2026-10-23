@@ -52,6 +52,9 @@ const DEFAULTS = {
 let loadedFilename = "image.png";
 let rawImageElement = null;
 let currentSnappedCanvas = null;
+let currentActivePalette = null;
+let rawOffCanvas = document.createElement('canvas');
+let rawOffCtx = rawOffCanvas.getContext('2d', { willReadFrequently: true });
 let currentDivisor = 1;
 let splitPosition = 0.5;
 let zoomPercent = 100;
@@ -125,6 +128,18 @@ const pass2Toggle = document.getElementById('pass2Toggle');
 // Palette DOM
 const paletteSelect = document.getElementById('paletteSelect');
 const palettePreview = document.getElementById('palettePreview');
+const btnStartEyedropper = document.getElementById('btnStartEyedropper');
+const eyedropperHud = document.getElementById('eyedropperHud');
+const eyedropperHint = document.getElementById('eyedropperHint');
+const btnEyedropperClear = document.getElementById('btnEyedropperClear');
+const btnEyedropperCancel = document.getElementById('btnEyedropperCancel');
+const eyedropperSwatches = document.getElementById('eyedropperSwatches');
+const btnFinishPalette = document.getElementById('btnFinishPalette');
+const eyedropperLoupe = document.getElementById('eyedropperLoupe');
+const loupeColor = document.getElementById('loupeColor');
+const loupeHex = document.getElementById('loupeHex');
+let isEyedropperActive = false;
+let pickedEyedropperColors = [];
 const paletteRefBadge = document.getElementById('paletteRefBadge');
 const paletteRefThumb = document.getElementById('paletteRefThumb');
 const paletteRefNameEl = document.getElementById('paletteRefName');
@@ -533,6 +548,12 @@ function loadImage(file) {
       rawImageElement = img;
       const w = img.naturalWidth || img.width;
       const h = img.naturalHeight || img.height;
+      const maxDim = Math.max(w, h);
+
+      rawOffCanvas.width = w;
+      rawOffCanvas.height = h;
+      rawOffCtx.clearRect(0, 0, w, h);
+      rawOffCtx.drawImage(img, 0, 0);
 
       loadedFilenameEl.textContent = loadedFilename;
       origDimBadge.textContent = `${w}x${h} px`;
@@ -586,6 +607,8 @@ function updateDimensionsUI() {
 btnCloseImage.addEventListener('click', () => {
   rawImageElement = null;
   currentSnappedCanvas = null;
+  currentActivePalette = null;
+  stopEyedropper();
 
   viewerToolbar.style.display = 'none';
   canvasWrapper.style.display = 'none';
@@ -737,6 +760,7 @@ async function updatePreviewAsync() {
     if (currentSession !== previewSessionId) return;
 
     currentSnappedCanvas = offCanvas;
+    currentActivePalette = palette;
     activeColors.textContent = palette ? palette.length : 'All';
     renderSplitView();
   } finally {
@@ -994,6 +1018,7 @@ let isDraggingSplit = false;
 
 function startSplitDrag(e) {
   if (e.button !== 0) return; // Only left-click
+  if (isEyedropperActive) return; // Do not drag split during eyedropper mode
   isDraggingSplit = true;
   updateSplitFromMouse(e);
 }
@@ -1023,18 +1048,420 @@ function updateSplitFromMouse(e) {
   updateSplitBarPosition();
 }
 
-// DOWNLOAD ASSET: [filename]_sn[sizeX].png
-btnDownload.addEventListener('click', () => {
+// EYEDROPPER PALETTE BUILDER IMPLEMENTATION
+function startEyedropper() {
+  if (!rawImageElement) return;
+  isEyedropperActive = true;
+  eyedropperHud.style.display = 'flex';
+  btnStartEyedropper.classList.add('btn-eyedropper-active');
+  btnStartEyedropper.innerHTML = '&#128394; PICKING... (CLICK IMAGE)';
+  mainCanvas.style.cursor = 'crosshair';
+  canvasScaler.style.cursor = 'crosshair';
+  canvasWrapper.style.cursor = 'crosshair';
+  updateEyedropperUI();
+}
+
+function stopEyedropper() {
+  isEyedropperActive = false;
+  eyedropperHud.style.display = 'none';
+  eyedropperLoupe.style.display = 'none';
+  btnStartEyedropper.classList.remove('btn-eyedropper-active');
+  btnStartEyedropper.innerHTML = '&#128394; + ADD PALETTE (EYEDROPPER)';
+  mainCanvas.style.cursor = '';
+  canvasScaler.style.cursor = '';
+  canvasWrapper.style.cursor = '';
+}
+
+function showEyedropperHint(msg) {
+  if (!eyedropperHint) return;
+  const orig = eyedropperHint.textContent;
+  eyedropperHint.textContent = msg;
+  eyedropperHint.style.color = 'var(--accent-orange)';
+  setTimeout(() => {
+    eyedropperHint.textContent = 'Click original image to add colors (1-by-1)';
+    eyedropperHint.style.color = '#94a3b8';
+  }, 1800);
+}
+
+function updateEyedropperUI() {
+  eyedropperSwatches.innerHTML = '';
+  if (pickedEyedropperColors.length === 0) {
+    eyedropperSwatches.innerHTML = '<span class="empty-swatches-hint">Click on image to sample colors...</span>';
+    btnFinishPalette.innerHTML = '&#10004; FINISH PALETTE (0 COLORS)';
+    btnFinishPalette.disabled = true;
+    return;
+  }
+
+  btnFinishPalette.disabled = false;
+  btnFinishPalette.innerHTML = `&#10004; FINISH PALETTE (${pickedEyedropperColors.length} COLORS)`;
+
+  pickedEyedropperColors.forEach((c, idx) => {
+    const sw = document.createElement('div');
+    sw.className = 'eyedropper-swatch';
+    const hex = rgbToHex(c[0], c[1], c[2]);
+    sw.style.backgroundColor = `rgb(${c[0]},${c[1]},${c[2]})`;
+    sw.title = `${hex.toUpperCase()} (${c[0]},${c[1]},${c[2]}) - Click to remove`;
+    sw.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pickedEyedropperColors.splice(idx, 1);
+      updateEyedropperUI();
+    });
+    eyedropperSwatches.appendChild(sw);
+  });
+}
+
+btnStartEyedropper.addEventListener('click', () => {
+  if (!rawImageElement) {
+    fileInput.click();
+    return;
+  }
+  if (isEyedropperActive) {
+    stopEyedropper();
+  } else {
+    startEyedropper();
+  }
+});
+
+btnEyedropperCancel.addEventListener('click', () => stopEyedropper());
+
+btnEyedropperClear.addEventListener('click', () => {
+  pickedEyedropperColors = [];
+  updateEyedropperUI();
+});
+
+btnFinishPalette.addEventListener('click', () => {
+  if (pickedEyedropperColors.length === 0) {
+    alert("Please pick at least 1 color from the image first!");
+    return;
+  }
+
+  // Register in PALETTES
+  PALETTES.customEyedropper = [...pickedEyedropperColors];
+
+  // Add or update option in paletteSelect
+  let opt = paletteSelect.querySelector('option[value="customEyedropper"]');
+  if (!opt) {
+    opt = document.createElement('option');
+    opt.value = 'customEyedropper';
+    paletteSelect.insertBefore(opt, paletteSelect.firstChild);
+  }
+  opt.textContent = `Custom Eyedropper (${pickedEyedropperColors.length} Colors)`;
+  paletteSelect.value = 'customEyedropper';
+
+  renderSwatches(pickedEyedropperColors);
+  stopEyedropper();
+  triggerPreviewDebounced();
+});
+
+// EYEDROPPER CANVAS HOVER & CLICK
+canvasScaler.addEventListener('click', (e) => {
+  if (!isEyedropperActive || !rawImageElement || e.button !== 0) return;
+  e.stopPropagation();
+
+  const rect = mainCanvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+
+  if (mouseX < 0 || mouseX > rect.width || mouseY < 0 || mouseY > rect.height) return;
+
+  const normX = mouseX / rect.width;
+  const normY = mouseY / rect.height;
+  const imgX = Math.floor(normX * rawOffCanvas.width);
+  const imgY = Math.floor(normY * rawOffCanvas.height);
+
+  if (imgX >= 0 && imgX < rawOffCanvas.width && imgY >= 0 && imgY < rawOffCanvas.height) {
+    const p = rawOffCtx.getImageData(imgX, imgY, 1, 1).data;
+    const r = p[0], g = p[1], b = p[2], a = p[3];
+
+    if (a === 0) {
+      showEyedropperHint("Transparent pixel (Alpha 0) - skipped");
+      return;
+    }
+
+    const hex = rgbToHex(r, g, b);
+    const exists = pickedEyedropperColors.some(c => rgbToHex(c[0], c[1], c[2]) === hex);
+    if (!exists) {
+      pickedEyedropperColors.push([r, g, b]);
+      updateEyedropperUI();
+    } else {
+      showEyedropperHint(`Color ${hex.toUpperCase()} already in palette`);
+    }
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isEyedropperActive || !rawImageElement) {
+    eyedropperLoupe.style.display = 'none';
+    return;
+  }
+
+  const rect = mainCanvas.getBoundingClientRect();
+  if (e.clientX >= rect.left && e.clientX <= rect.right &&
+      e.clientY >= rect.top && e.clientY <= rect.bottom) {
+    eyedropperLoupe.style.display = 'flex';
+    eyedropperLoupe.style.left = `${e.clientX}px`;
+    eyedropperLoupe.style.top = `${e.clientY}px`;
+
+    const normX = (e.clientX - rect.left) / rect.width;
+    const normY = (e.clientY - rect.top) / rect.height;
+    const imgX = Math.floor(normX * rawOffCanvas.width);
+    const imgY = Math.floor(normY * rawOffCanvas.height);
+
+    if (imgX >= 0 && imgX < rawOffCanvas.width && imgY >= 0 && imgY < rawOffCanvas.height) {
+      const p = rawOffCtx.getImageData(imgX, imgY, 1, 1).data;
+      const r = p[0], g = p[1], b = p[2], a = p[3];
+      if (a === 0) {
+        loupeColor.style.backgroundColor = 'transparent';
+        loupeHex.textContent = 'Alpha 0 (Transparent)';
+      } else {
+        const hex = rgbToHex(r, g, b);
+        loupeColor.style.backgroundColor = `rgb(${r},${g},${b})`;
+        loupeHex.textContent = `${hex.toUpperCase()} (${r},${g},${b})`;
+      }
+    }
+  } else {
+    eyedropperLoupe.style.display = 'none';
+  }
+});
+
+// CRC32 & INDEXED PNG ENCODER (PLTE + HARD/SOFT tRNS CHUNKS)
+const pngCrcTable = new Uint32Array(256);
+for (let n = 0; n < 256; n++) {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+  pngCrcTable[n] = c >>> 0;
+}
+function calcPngCrc32(buf) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) crc = pngCrcTable[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+function buildPngChunk(typeStr, data) {
+  const len = data ? data.length : 0;
+  const chunk = new Uint8Array(4 + 4 + len + 4);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, len, false);
+  for (let i = 0; i < 4; i++) chunk[4 + i] = typeStr.charCodeAt(i);
+  if (data) chunk.set(data, 8);
+  const crcData = chunk.subarray(4, 8 + len);
+  view.setUint32(8 + len, calcPngCrc32(crcData), false);
+  return chunk;
+}
+
+async function encodeIndexedPng(width, height, rgbaData, isHardAlpha, customPalette) {
+  const numPixels = width * height;
+  
+  let hasTransparent = false;
+  let hasTranslucent = false;
+  for (let i = 3; i < rgbaData.length; i += 4) {
+    const a = rgbaData[i];
+    if (a === 0) hasTransparent = true;
+    else if (a < 255) hasTranslucent = true;
+  }
+  
+  let finalPalette = [];
+  let alphaList = [];
+  const indices = new Uint8Array(numPixels);
+  const colorMap = new Map();
+  
+  if (isHardAlpha) {
+    if (hasTransparent) {
+      finalPalette.push([0, 0, 0]);
+      alphaList.push(0);
+    }
+    
+    if (customPalette && customPalette.length > 0) {
+      for (const col of customPalette) {
+        const key = (col[0] << 16) | (col[1] << 8) | col[2];
+        if (!colorMap.has(key) && finalPalette.length < 256) {
+          colorMap.set(key, finalPalette.length);
+          finalPalette.push([col[0], col[1], col[2]]);
+          alphaList.push(255);
+        }
+      }
+    }
+    
+    for (let p = 0; p < numPixels; p++) {
+      const offset = p * 4;
+      const a = rgbaData[offset + 3];
+      if (a < 128 && hasTransparent) {
+        indices[p] = 0;
+      } else {
+        const r = rgbaData[offset];
+        const g = rgbaData[offset + 1];
+        const b = rgbaData[offset + 2];
+        const key = (r << 16) | (g << 8) | b;
+        let idx = colorMap.get(key);
+        if (idx === undefined) {
+          if (finalPalette.length < 256) {
+            idx = finalPalette.length;
+            finalPalette.push([r, g, b]);
+            alphaList.push(255);
+            colorMap.set(key, idx);
+          } else {
+            let bestIdx = hasTransparent ? 1 : 0;
+            let bestDist = Infinity;
+            const startIdx = hasTransparent ? 1 : 0;
+            for (let k = startIdx; k < finalPalette.length; k++) {
+              const pr = finalPalette[k][0], pg = finalPalette[k][1], pb = finalPalette[k][2];
+              const d = (r-pr)*(r-pr) + (g-pg)*(g-pg) + (b-pb)*(b-pb);
+              if (d < bestDist) { bestDist = d; bestIdx = k; }
+            }
+            idx = bestIdx;
+          }
+        }
+        indices[p] = idx;
+      }
+    }
+  } else {
+    for (let p = 0; p < numPixels; p++) {
+      const offset = p * 4;
+      const r = rgbaData[offset];
+      const g = rgbaData[offset + 1];
+      const b = rgbaData[offset + 2];
+      const a = rgbaData[offset + 3];
+      const key = `${r},${g},${b},${a}`;
+      let idx = colorMap.get(key);
+      if (idx === undefined) {
+        if (finalPalette.length < 256) {
+          idx = finalPalette.length;
+          finalPalette.push([r, g, b]);
+          alphaList.push(a);
+          colorMap.set(key, idx);
+        } else {
+          let bestIdx = 0, bestDist = Infinity;
+          for (let k = 0; k < finalPalette.length; k++) {
+            const pr = finalPalette[k][0], pg = finalPalette[k][1], pb = finalPalette[k][2];
+            const pa = alphaList[k];
+            const d = (r-pr)*(r-pr) + (g-pg)*(g-pg) + (b-pb)*(b-pb) + (a-pa)*(a-pa)*2;
+            if (d < bestDist) { bestDist = d; bestIdx = k; }
+          }
+          idx = bestIdx;
+        }
+      }
+      indices[p] = idx;
+    }
+  }
+
+  if (finalPalette.length === 0) {
+    finalPalette.push([0, 0, 0]);
+    alphaList.push(255);
+  }
+
+  const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
+  const ihdrData = new Uint8Array(13);
+  const ihdrView = new DataView(ihdrData.buffer);
+  ihdrView.setUint32(0, width, false);
+  ihdrView.setUint32(4, height, false);
+  ihdrData[8] = 8;
+  ihdrData[9] = 3;
+  ihdrData[10] = 0;
+  ihdrData[11] = 0;
+  ihdrData[12] = 0;
+  const ihdrChunk = buildPngChunk('IHDR', ihdrData);
+
+  const plteData = new Uint8Array(finalPalette.length * 3);
+  for (let i = 0; i < finalPalette.length; i++) {
+    plteData[i * 3] = finalPalette[i][0];
+    plteData[i * 3 + 1] = finalPalette[i][1];
+    plteData[i * 3 + 2] = finalPalette[i][2];
+  }
+  const plteChunk = buildPngChunk('PLTE', plteData);
+
+  let trnsChunk = null;
+  if (isHardAlpha) {
+    if (hasTransparent) {
+      trnsChunk = buildPngChunk('tRNS', new Uint8Array([0]));
+    }
+  } else {
+    let lastNonOpaque = -1;
+    for (let i = alphaList.length - 1; i >= 0; i--) {
+      if (alphaList[i] < 255) {
+        lastNonOpaque = i;
+        break;
+      }
+    }
+    if (lastNonOpaque >= 0) {
+      const trnsData = new Uint8Array(lastNonOpaque + 1);
+      for (let i = 0; i <= lastNonOpaque; i++) {
+        trnsData[i] = alphaList[i];
+      }
+      trnsChunk = buildPngChunk('tRNS', trnsData);
+    }
+  }
+
+  const rawScanlines = new Uint8Array(height * (1 + width));
+  for (let y = 0; y < height; y++) {
+    const rowOffset = y * (1 + width);
+    rawScanlines[rowOffset] = 0;
+    for (let x = 0; x < width; x++) {
+      rawScanlines[rowOffset + 1 + x] = indices[y * width + x];
+    }
+  }
+
+  const cs = new CompressionStream('deflate');
+  const writer = cs.writable.getWriter();
+  writer.write(rawScanlines);
+  writer.close();
+  const resp = new Response(cs.readable);
+  const compressed = new Uint8Array(await resp.arrayBuffer());
+  const idatChunk = buildPngChunk('IDAT', compressed);
+
+  const iendChunk = buildPngChunk('IEND', null);
+
+  const totalLen = sig.length + ihdrChunk.length + plteChunk.length + 
+                   (trnsChunk ? trnsChunk.length : 0) + idatChunk.length + iendChunk.length;
+  const png = new Uint8Array(totalLen);
+  let pos = 0;
+  png.set(sig, pos); pos += sig.length;
+  png.set(ihdrChunk, pos); pos += ihdrChunk.length;
+  png.set(plteChunk, pos); pos += plteChunk.length;
+  if (trnsChunk) {
+    png.set(trnsChunk, pos); pos += trnsChunk.length;
+  }
+  png.set(idatChunk, pos); pos += idatChunk.length;
+  png.set(iendChunk, pos); pos += iendChunk.length;
+
+  return png;
+}
+
+// DOWNLOAD ASSET: [filename]_sn[sizeX].png (INDEXED PNG WITH PLTE & tRNS)
+btnDownload.addEventListener('click', async () => {
   if (!currentSnappedCanvas || !rawImageElement) return;
 
   const targetW = currentSnappedCanvas.width;
+  const targetH = currentSnappedCanvas.height;
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
   const finalFilename = `${baseName}_sn${targetW}.png`;
 
-  const link = document.createElement('a');
-  link.download = finalFilename;
-  link.href = currentSnappedCanvas.toDataURL('image/png');
-  link.click();
+  try {
+    const offCtx = currentSnappedCanvas.getContext('2d');
+    const imgData = offCtx.getImageData(0, 0, targetW, targetH);
+    const isHardAlpha = snapAlpha.checked;
+
+    const pngBytes = await encodeIndexedPng(
+      targetW,
+      targetH,
+      imgData.data,
+      isHardAlpha,
+      currentActivePalette
+    );
+
+    const blob = new Blob([pngBytes], { type: 'image/png' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = finalFilename;
+    link.href = url;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    console.warn("Indexed PNG encoding fallback to canvas toDataURL:", err);
+    const link = document.createElement('a');
+    link.download = finalFilename;
+    link.href = currentSnappedCanvas.toDataURL('image/png');
+    link.click();
+  }
 });
 
 // TAB 2: PROMPT LAB COPY HELPERS

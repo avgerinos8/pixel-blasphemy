@@ -193,6 +193,10 @@
                   <option value="gameboy">Game Boy Classic (4 Shades)</option>
                 </select>
 
+                <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnStartEyedropper" title="Sample custom palette directly from original image with eyedropper">
+                  &#128394; + ADD PALETTE (EYEDROPPER)
+                </button>
+
                 <!-- ACTIVE REFERENCE PALETTE BADGE -->
                 <div class="palette-ref-badge" id="paletteRefBadge" style="display:none;">
                   <img id="paletteRefThumb" class="palette-ref-thumb" alt="Thumb">
@@ -264,6 +268,28 @@
 
               <!-- INTERACTIVE SPLIT SLIDER BAR (FULL PANEL HEIGHT) -->
               <div class="split-slider-bar" id="splitBar" style="display:none;"></div>
+
+              <!-- FLOATING EYEDROPPER HUD TOOLBAR -->
+              <div class="eyedropper-hud" id="eyedropperHud" style="display:none;">
+                <div class="eyedropper-hud-header">
+                  <span class="eyedropper-hud-title">&#128394; EYEDROPPER PALETTE BUILDER</span>
+                  <span class="eyedropper-hud-hint" id="eyedropperHint">Click original image to add colors (1-by-1)</span>
+                  <button type="button" class="btn-tool-sm" id="btnEyedropperClear" title="Clear all picked colors">CLEAR</button>
+                  <button type="button" class="btn-tool-sm btn-tool-danger" id="btnEyedropperCancel" title="Cancel eyedropper mode">&#10005; CANCEL</button>
+                </div>
+                <div class="eyedropper-swatches" id="eyedropperSwatches">
+                  <span class="empty-swatches-hint">Click on image to sample colors...</span>
+                </div>
+                <button type="button" class="btn btn-primary btn-finish-palette w-full" id="btnFinishPalette">
+                  &#10004; FINISH PALETTE (0 COLORS)
+                </button>
+              </div>
+
+              <!-- FLOATING EYEDROPPER LOUPE / COLOR PREVIEW TOOLTIP -->
+              <div class="eyedropper-loupe" id="eyedropperLoupe" style="display:none;">
+                <span class="loupe-color" id="loupeColor"></span>
+                <span class="loupe-hex" id="loupeHex">#FFFFFF</span>
+              </div>
 
               <!-- STATS OVERLAY BAR -->
               <div class="view-stats" id="viewStats">

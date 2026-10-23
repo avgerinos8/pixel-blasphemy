@@ -9,6 +9,8 @@
 PixelBlasphemy provides a battle-tested pipeline to take high-resolution AI concept art from **Google Gemini / Nano-Banana** or **ComfyUI** and convert it into **mathematically perfect, grid-aligned, palette-quantized retro game assets** of any dimensions.
 
 ### Key Studio Features:
+- 🎨 **Interactive Eyedropper Palette Builder**: Sample colors 1-by-1 directly from the original image using a real-time pixel magnifier loupe. Easily curate custom palettes and apply them instantly with the prominent **✓ FINISH PALETTE** action.
+- 💾 **True Indexed-Color PNG Export (PLTE & tRNS)**: Automatically saves authentic 8-bit indexed PNGs (Color Type 3) embedded with exact palette data. Adheres strictly to retro specs: single-byte tRNS: [0] hard-alpha only when transparent pixels exist (omitted when fully opaque), or multi-level analytic transparency for translucent sprites.
 - 🎨 **Reference Palette Extractor**: Upload any external reference image (palette strip, game screenshot, or color sheet) to automatically sample its colors via K-Means and apply them to your sprite. Falls back seamlessly to the active image when cleared.
 - 📐 **Zero-Scroll Viewport Fit**: Completely redesigned GUI engineered to fit within 100% of the viewport height and width (`% of smaller dimension`) without page or panel scrollbars.
 - 🚫 **No More AI Mixels**: Eliminates sub-pixel blur, inconsistent pixel scales, and muddy color bleeds.
