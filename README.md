@@ -1,12 +1,12 @@
-﻿# PixelForge 🎮
+﻿# PixelBlasphemy 🎮
 
 > **The Zero-Mixels AI Pixel Art Pipeline & Studio for Indie Game Developers**  
 > *100% Free, Local, and Open-Source*
 
 ---
 
-## 🌟 What is PixelForge?
-PixelForge provides a battle-tested pipeline to take high-resolution AI concept art from **Google Gemini / Nano-Banana** or **ComfyUI** and convert it into **mathematically perfect, grid-aligned, palette-quantized retro game assets** of any dimensions.
+## 🌟 What is PixelBlasphemy?
+PixelBlasphemy provides a battle-tested pipeline to take high-resolution AI concept art from **Google Gemini / Nano-Banana** or **ComfyUI** and convert it into **mathematically perfect, grid-aligned, palette-quantized retro game assets** of any dimensions.
 
 ### Key Studio Features:
 - 🚫 **No More AI Mixels**: Eliminates sub-pixel blur, inconsistent pixel scales, and muddy color bleeds.
@@ -24,7 +24,7 @@ PixelForge provides a battle-tested pipeline to take high-resolution AI concept 
 
 ### Option 1: Run with `npx serve`
 ```powershell
-cd c:\dev\pixel-forge
+cd c:\dev\pixel-blasphemy
 npm run dev
 # Or directly:
 npx -y serve app -l 8080
@@ -33,7 +33,7 @@ Open **[http://localhost:8080](http://localhost:8080)** in your browser!
 
 ### Option 2: Run with Python HTTP Server
 ```powershell
-cd c:\dev\pixel-forge
+cd c:\dev\pixel-blasphemy
 python -m http.server 8080 --directory app
 ```
 
@@ -61,4 +61,4 @@ C:\ConfyUI\python_embeded\python.exe tools\pixel_snapper.py raw_doors/ snapped_d
 ## ⚖️ Credits & Licensing
 - Pixel Snapper Core Engine © 2025 Hugo Duprez (`Hugo-Dz/spritefusion-pixel-snapper`, MIT License).
 - ComfyUI Node Port © 2025 `x0x0b` (MIT License).
-- PixelForge Studio & Pipelines developed for *Streets of Regex*.
+- PixelBlasphemy Studio & Pipelines developed for *Streets of Regex*.

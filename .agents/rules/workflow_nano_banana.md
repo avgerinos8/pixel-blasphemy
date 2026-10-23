@@ -44,7 +44,7 @@ To prevent Nano-Banana from rendering random isometric angles or 3D perspective 
 ## 3. The Post-Processing Step (Pixel Snapper)
 
 1. Save or copy the high-res image from Gemini / Nano-Banana (typically 1024x1024).
-2. Open **PixelForge Studio** (`http://localhost:8080`) or run the CLI:
+2. Open **PixelBlasphemy Studio** (`http://localhost:8080`) or run the CLI:
    ```powershell
    C:\ConfyUI\python_embeded\python.exe tools\pixel_snapper.py input.png output_64x64.png --colors 16 --pixel-size 16
    ```

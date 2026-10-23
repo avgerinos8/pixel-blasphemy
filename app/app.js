@@ -1,4 +1,4 @@
-﻿// PixelForge Studio v1.3 - Tezumie Dither Engine + Outlines & Bi-directional Synced Controls
+﻿// PixelBlasphemy Studio v1.3 - Tezumie Dither Engine + Outlines & Bi-directional Synced Controls
 
 const PALETTES = {
   auto: null,

@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env python3
 """
-PixelForge Standalone Pixel Snapper Tool (CLI & Batch Processor)
+PixelBlasphemy Standalone Pixel Snapper Tool (CLI & Batch Processor)
 Based on Hugo Duprez's Sprite Fusion Pixel Snapper algorithm (MIT License).
 
 Converts AI-generated "fake" pixel art into clean, grid-snapped, palette-quantized assets.
@@ -162,7 +162,7 @@ def process_file(in_path, out_path, colors=16, pixel_size=0.0, palette_hex=None,
     print(f"[OK] {os.path.basename(in_path)} ({img.size[0]}x{img.size[1]}) -> {os.path.basename(out_path)} ({snapped.size[0]}x{snapped.size[1]})")
 
 def main():
-    parser = argparse.ArgumentParser(description="PixelForge Standalone Pixel Snapper (Free Batch & CLI Tool)")
+    parser = argparse.ArgumentParser(description="PixelBlasphemy Standalone Pixel Snapper (Free Batch & CLI Tool)")
     parser.add_argument("input", help="Input image file or directory")
     parser.add_argument("output", help="Output PNG file or output directory")
     parser.add_argument("--colors", "-c", type=int, default=16, help="Color palette size (default: 16)")

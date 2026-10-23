@@ -1,7 +1,7 @@
-﻿# PixelForge - Agent Guidelines & Architecture
+﻿# PixelBlasphemy - Agent Guidelines & Architecture
 
 ## 1. Project Overview
-**PixelForge** is a dedicated toolchain for generating, fixing, and mastering authentic retro **pixel art game assets** (tiles, doors, props, sprites) for modern indie game development.
+**PixelBlasphemy** is a dedicated toolchain for generating, fixing, and mastering authentic retro **pixel art game assets** (tiles, doors, props, sprites) for modern indie game development.
 
 - **Primary Goal**: Eliminate "AI Mixels" (blurry, anti-aliased, off-grid pixels with bloated color palettes) and establish reproducible, high-speed pipelines from Concept to Grid-Snapped Native Pixel Art.
 - **Upstream Engine**: `Hugo-Dz/spritefusion-pixel-snapper` (MIT License).
@@ -27,5 +27,5 @@
 - `.agents/`: Guidelines, architecture, and workflow rules.
 - `vendor/spritefusion-pixel-snapper/`: Cloned official Rust upstream repository (MIT License).
 - `tools/pixel_snapper.py`: Standalone Python CLI & batch processor (runs with ComfyUI Python).
-- `app/`: **PixelForge Studio** - Free local Web/Desktop GUI with live preview, batch processing, and palette selector.
+- `app/`: **PixelBlasphemy Studio** - Free local Web/Desktop GUI with live preview, batch processing, and palette selector.
 - `workflows/`: Step-by-step setup guides and prompt templates.
