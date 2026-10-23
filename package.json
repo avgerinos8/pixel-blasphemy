@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "pixel-forge",
   "version": "1.0.0",
   "description": "Zero-Mixels AI Pixel Art Pipeline & Studio",
@@ -13,5 +13,8 @@
     "ai"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "image-to-pixel": "^3.2.0"
+  }
 }

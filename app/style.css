@@ -131,7 +131,7 @@ body {
 
 .workbench {
   display: grid;
-  grid-template-columns: 370px 1fr;
+  grid-template-columns: 390px 1fr;
   gap: 20px;
   flex: 1;
 }
@@ -158,14 +158,45 @@ body {
 
 /* CONTROLS */
 .control-group {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .control-group label {
   display: block;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-dim);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+
+/* SYNCED FIELDS (LABEL + EXACT NUMBER BOX) */
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.label-row label {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+}
+
+.num-box {
+  background: #080b0f;
+  color: var(--accent-yellow);
+  border: 1px solid var(--border-color);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: bold;
+  width: 60px;
+  text-align: right;
+  outline: none;
+}
+
+.num-box:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 6px rgba(0,240,255,0.4);
 }
 
 /* SCALE BUTTON GROUP */
@@ -220,9 +251,86 @@ body {
 .ticks {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--text-dim);
-  margin-top: 4px;
+  margin-top: 3px;
+}
+
+/* CHECKBOX ROW & COLOR PICKER */
+.checkbox-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #080b0f;
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+}
+
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  color: var(--text-main);
+  font-weight: bold;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.color-picker {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 24px;
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.color-picker::-webkit-color-swatch {
+  border: 1px solid #000;
+}
+
+/* TEZUMIE FEATURE BOX */
+.tezumie-box {
+  background: #0c1420;
+  border: 1px solid #284461;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-left: 3px solid var(--accent-magenta);
+}
+
+.feature-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.feature-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #fff;
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+
+.badge-mini {
+  background: var(--accent-magenta);
+  color: #fff;
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+.tezumie-options {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #1f354d;
 }
 
 select {
@@ -327,7 +435,7 @@ select:focus {
 
 .batch-list {
   list-style: none;
-  max-height: 140px;
+  max-height: 130px;
   overflow-y: auto;
   border: 1px solid var(--border-color);
   background: var(--bg-dark);
@@ -424,18 +532,22 @@ select:focus {
 }
 
 .zoom-slider {
-  width: 140px;
+  width: 120px;
   height: 6px;
   accent-color: var(--accent-cyan);
   cursor: pointer;
 }
 
-.zoom-text {
-  font-size: 0.82rem;
+.zoom-num-box {
+  background: transparent;
+  border: none;
   color: var(--accent-cyan);
-  min-width: 44px;
-  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
   font-weight: bold;
+  width: 44px;
+  text-align: right;
+  outline: none;
 }
 
 .btn-tool {

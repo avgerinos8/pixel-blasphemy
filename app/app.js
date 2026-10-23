@@ -1,4 +1,4 @@
-﻿// PixelForge Studio v1.2 - Live Non-Destructive Preview with Zoom & Grid Toggle
+﻿// PixelForge Studio v1.3 - Tezumie Dither Engine + Outlines & Bi-directional Synced Controls
 
 const PALETTES = {
   auto: null,
@@ -38,6 +38,7 @@ let currentDivisor = 8;
 let splitPosition = 0.5;
 let zoomPercent = 100;
 let showGrid = true;
+let isUpdatingPreview = false;
 let batchFiles = [];
 
 // DOM Elements
@@ -45,7 +46,6 @@ const dropZone = document.getElementById('dropZone');
 const dropPrompt = document.getElementById('dropPrompt');
 const fileInput = document.getElementById('fileInput');
 const canvasWrapper = document.getElementById('canvasWrapper');
-const viewportScroller = document.getElementById('viewportScroller');
 const canvasScaler = document.getElementById('canvasScaler');
 const mainCanvas = document.getElementById('mainCanvas');
 const splitBar = document.getElementById('splitBar');
@@ -60,17 +60,34 @@ const quickLoadGroup = document.getElementById('quickLoadGroup');
 
 // Zoom & Grid controls
 const zoomSlider = document.getElementById('zoomSlider');
-const zoomValueText = document.getElementById('zoomValueText');
+const zoomNumInput = document.getElementById('zoomNumInput');
 const btnZoomIn = document.getElementById('btnZoomIn');
 const btnZoomOut = document.getElementById('btnZoomOut');
 const btnResetZoom = document.getElementById('btnResetZoom');
 const btnToggleGrid = document.getElementById('btnToggleGrid');
 
-// Scale & Palette
+// Scale & Synced Fields
 const scaleGroup = document.getElementById('scaleGroup');
 const targetDimText = document.getElementById('targetDimText');
+const outlineWeight = document.getElementById('outlineWeight');
+const outlineWeightNum = document.getElementById('outlineWeightNum');
+const edgeSensitivity = document.getElementById('edgeSensitivity');
+const edgeSensitivityNum = document.getElementById('edgeSensitivityNum');
 const colorCount = document.getElementById('colorCount');
-const colorCountVal = document.getElementById('colorCountVal');
+const colorCountNum = document.getElementById('colorCountNum');
+const kmeansIter = document.getElementById('kmeansIter');
+const kmeansIterNum = document.getElementById('kmeansIterNum');
+
+const autoOutlineToggle = document.getElementById('autoOutlineToggle');
+const autoOutlineColor = document.getElementById('autoOutlineColor');
+
+// Tezumie Integration DOM
+const tezumieToggle = document.getElementById('tezumieToggle');
+const tezumieOptions = document.getElementById('tezumieOptions');
+const tezumieMethod = document.getElementById('tezumieMethod');
+const tezumieStrength = document.getElementById('tezumieStrength');
+const tezumieStrengthNum = document.getElementById('tezumieStrengthNum');
+
 const paletteSelect = document.getElementById('paletteSelect');
 const palettePreview = document.getElementById('palettePreview');
 
@@ -80,6 +97,7 @@ const downloadNameLabel = document.getElementById('downloadNameLabel');
 const origRes = document.getElementById('origRes');
 const snappedRes = document.getElementById('snappedRes');
 const activeColors = document.getElementById('activeColors');
+const pipelineTag = document.getElementById('pipelineTag');
 const statsZoom = document.getElementById('statsZoom');
 const splitPercent = document.getElementById('splitPercent');
 
@@ -93,6 +111,48 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+// BI-DIRECTIONAL SYNC HELPER (SLIDER <-> NUMBER BOX)
+function syncSliderAndNum(slider, numBox, callback) {
+  slider.addEventListener('input', () => {
+    numBox.value = slider.value;
+    callback(parseFloat(slider.value));
+  });
+  numBox.addEventListener('input', () => {
+    let val = parseFloat(numBox.value);
+    if (!isNaN(val)) {
+      slider.value = val;
+      callback(val);
+    }
+  });
+  numBox.addEventListener('change', () => {
+    let val = parseFloat(numBox.value);
+    const min = parseFloat(slider.min);
+    const max = parseFloat(slider.max);
+    if (val < min) val = min;
+    if (val > max) val = max;
+    numBox.value = val;
+    slider.value = val;
+    callback(val);
+  });
+}
+
+// SETUP SYNCED FIELDS
+syncSliderAndNum(outlineWeight, outlineWeightNum, () => triggerPreviewDebounced());
+syncSliderAndNum(edgeSensitivity, edgeSensitivityNum, () => triggerPreviewDebounced());
+syncSliderAndNum(colorCount, colorCountNum, () => triggerPreviewDebounced());
+syncSliderAndNum(kmeansIter, kmeansIterNum, () => triggerPreviewDebounced());
+syncSliderAndNum(tezumieStrength, tezumieStrengthNum, () => triggerPreviewDebounced());
+
+// TEZUMIE TOGGLE & METHOD
+tezumieToggle.addEventListener('change', () => {
+  tezumieOptions.style.display = tezumieToggle.checked ? 'block' : 'none';
+  triggerPreviewDebounced();
+});
+tezumieMethod.addEventListener('change', () => triggerPreviewDebounced());
+
+autoOutlineToggle.addEventListener('change', () => triggerPreviewDebounced());
+autoOutlineColor.addEventListener('input', () => triggerPreviewDebounced());
+
 // SCALE BUTTONS (/2, /4, /8, /16, 1x)
 scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -100,7 +160,7 @@ scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
     btn.classList.add('active');
     currentDivisor = parseInt(btn.dataset.divisor) || 1;
     updateDimensionsUI();
-    updatePreview();
+    triggerPreviewDebounced();
   });
 });
 
@@ -120,41 +180,26 @@ function updatePalettePreview() {
 }
 paletteSelect.addEventListener('change', () => {
   updatePalettePreview();
-  updatePreview();
+  triggerPreviewDebounced();
 });
 updatePalettePreview();
 
-colorCount.addEventListener('input', () => {
-  colorCountVal.textContent = colorCount.value;
-  updatePreview();
-});
+document.getElementById('snapAlpha').addEventListener('change', () => triggerPreviewDebounced());
 
-document.getElementById('snapAlpha').addEventListener('change', updatePreview);
-
-// ZOOM CONTROLS
+// ZOOM CONTROLS (SLIDER + NUM BOX SYNC)
 function setZoom(val) {
   zoomPercent = Math.max(25, Math.min(800, val));
   zoomSlider.value = zoomPercent;
-  zoomValueText.textContent = `${zoomPercent}%`;
+  zoomNumInput.value = zoomPercent;
   statsZoom.textContent = `${zoomPercent}%`;
   applyZoomToCanvas();
 }
 
-zoomSlider.addEventListener('input', () => {
-  setZoom(parseInt(zoomSlider.value) || 100);
-});
-
-btnZoomIn.addEventListener('click', () => {
-  setZoom(zoomPercent + 25);
-});
-
-btnZoomOut.addEventListener('click', () => {
-  setZoom(zoomPercent - 25);
-});
-
-btnResetZoom.addEventListener('click', () => {
-  setZoom(100); // 100% Native 1:1 scale
-});
+zoomSlider.addEventListener('input', () => setZoom(parseInt(zoomSlider.value) || 100));
+zoomNumInput.addEventListener('input', () => setZoom(parseInt(zoomNumInput.value) || 100));
+btnZoomIn.addEventListener('click', () => setZoom(zoomPercent + 25));
+btnZoomOut.addEventListener('click', () => setZoom(zoomPercent - 25));
+btnResetZoom.addEventListener('click', () => setZoom(100)); // 1:1 Native Scale
 
 function applyZoomToCanvas() {
   if (!rawImageElement) return;
@@ -167,7 +212,6 @@ function applyZoomToCanvas() {
   mainCanvas.style.width = `${currentW}px`;
   mainCanvas.style.height = `${currentH}px`;
 
-  // Position split bar correctly
   const splitPx = Math.round(currentW * splitPosition);
   splitBar.style.left = `${splitPx}px`;
   splitBar.style.height = `${currentH}px`;
@@ -246,7 +290,6 @@ function loadImage(file) {
       const w = img.naturalWidth || img.width;
       const h = img.naturalHeight || img.height;
 
-      // UI updates
       loadedFilenameEl.textContent = loadedFilename;
       origDimBadge.textContent = `${w}x${h} px`;
       
@@ -255,20 +298,18 @@ function loadImage(file) {
       quickLoadGroup.style.display = 'block';
       canvasWrapper.style.display = 'flex';
 
-      // Auto divisor based on dimension
       const maxDim = Math.max(w, h);
       if (maxDim >= 1024) selectDivisor(16);
       else if (maxDim >= 512) selectDivisor(8);
       else if (maxDim >= 256) selectDivisor(4);
       else selectDivisor(1);
 
-      // Auto initial zoom: if image is small (<256px), zoom in to 200% or 400%
       if (maxDim <= 128) setZoom(400);
       else if (maxDim <= 256) setZoom(200);
       else setZoom(100);
 
       updateDimensionsUI();
-      updatePreview();
+      triggerPreviewDebounced();
     };
     img.src = e.target.result;
   };
@@ -293,7 +334,6 @@ function updateDimensionsUI() {
   targetDimText.textContent = `${targetW} × ${targetH} px (/${currentDivisor})`;
   snappedRes.textContent = `${targetW}x${targetH}`;
 
-  // Update download button label: [name]_sn[sizeX].png
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
   const downloadName = `${baseName}_sn${targetW}.png`;
   downloadNameLabel.textContent = `(${downloadName})`;
@@ -320,62 +360,158 @@ btnCloseImage.addEventListener('click', () => {
   fileInput.value = '';
 });
 
-// NON-DESTRUCTIVE LIVE PREVIEW COMPUTATION
-function updatePreview() {
-  if (!rawImageElement) return;
+// DEBOUNCED PREVIEW TO KEEP UI ULTRA RESPONSIVE
+let previewTimeout = null;
+function triggerPreviewDebounced() {
+  if (previewTimeout) clearTimeout(previewTimeout);
+  previewTimeout = setTimeout(() => {
+    updatePreviewAsync();
+  }, 40);
+}
 
-  const w = rawImageElement.naturalWidth || rawImageElement.width;
-  const h = rawImageElement.naturalHeight || rawImageElement.height;
-  const targetW = Math.max(1, Math.round(w / currentDivisor));
-  const targetH = Math.max(1, Math.round(h / currentDivisor));
-  const kColors = parseInt(colorCount.value) || 16;
-  const selectedPalette = PALETTES[paletteSelect.value];
+// NON-DESTRUCTIVE PREVIEW PIPELINE (TEZUMIE + OUTLINE PRESERVATION + QUANTIZATION)
+async function updatePreviewAsync() {
+  if (!rawImageElement || isUpdatingPreview) return;
+  isUpdatingPreview = true;
 
-  // Downsample to target grid
-  const offCanvas = document.createElement('canvas');
-  offCanvas.width = targetW;
-  offCanvas.height = targetH;
-  const offCtx = offCanvas.getContext('2d');
-  offCtx.imageSmoothingEnabled = false;
-  offCtx.drawImage(rawImageElement, 0, 0, targetW, targetH);
-
-  const imgData = offCtx.getImageData(0, 0, targetW, targetH);
-  const data = imgData.data;
-
-  // Pixels for K-Means
-  const pixels = [];
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] > 64) {
-      pixels.push([data[i], data[i + 1], data[i + 2]]);
-    }
-  }
-
-  let palette = selectedPalette;
-  if (!palette && pixels.length > 0) {
-    palette = runKMeans(pixels, kColors, 10);
-  }
-
-  // Remap
-  if (palette && palette.length > 0) {
+  try {
+    const w = rawImageElement.naturalWidth || rawImageElement.width;
+    const h = rawImageElement.naturalHeight || rawImageElement.height;
+    const targetW = Math.max(1, Math.round(w / currentDivisor));
+    const targetH = Math.max(1, Math.round(h / currentDivisor));
+    
+    const kColors = parseInt(colorCount.value) || 16;
+    const iterations = parseInt(kmeansIter.value) || 15;
+    const oWeight = parseFloat(outlineWeight.value) || 1.5;
+    const selectedPalette = PALETTES[paletteSelect.value];
     const snapAlpha = document.getElementById('snapAlpha').checked;
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] <= 64) {
-        if (snapAlpha) data[i + 3] = 0;
-        continue;
+
+    // Base offscreen downsample
+    let offCanvas = document.createElement('canvas');
+    offCanvas.width = targetW;
+    offCanvas.height = targetH;
+    let offCtx = offCanvas.getContext('2d');
+    offCtx.imageSmoothingEnabled = false;
+    offCtx.drawImage(rawImageElement, 0, 0, targetW, targetH);
+
+    // STEP 1: TEZUMIE DITHER ENGINE (OPTIONAL PRE-PASS)
+    const useTezumie = tezumieToggle.checked && window.ImageToPixel && window.ImageToPixel.pixelate;
+    if (useTezumie) {
+      pipelineTag.textContent = "Tezumie+PixelSnapper";
+      const method = tezumieMethod.value;
+      const strength = parseFloat(tezumieStrength.value) || 0.75;
+
+      try {
+        const result = await window.ImageToPixel.pixelate(offCanvas, {
+          size: { width: targetW, height: targetH },
+          dither: { method: method, strength: strength }
+        });
+        if (result && typeof result.toCanvas === 'function') {
+          offCanvas = result.toCanvas(1);
+          offCtx = offCanvas.getContext('2d');
+        }
+      } catch (err) {
+        console.warn("Tezumie pass fallback to native:", err);
       }
-      if (snapAlpha) data[i + 3] = 255;
-      const nearest = findNearestColor([data[i], data[i + 1], data[i + 2]], palette);
-      data[i] = nearest[0];
-      data[i + 1] = nearest[1];
-      data[i + 2] = nearest[2];
+    } else {
+      pipelineTag.textContent = "PixelSnapper";
+    }
+
+    // STEP 2: PIXEL DATA & OUTLINE PRESERVATION WEIGHTING
+    const imgData = offCtx.getImageData(0, 0, targetW, targetH);
+    const data = imgData.data;
+
+    // Collect pixels for K-Means with outline weighting
+    const pixels = [];
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 64) {
+        const r = data[i], g = data[i + 1], b = data[i + 2];
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        pixels.push([r, g, b]);
+
+        // If dark/outline pixel, duplicate entry based on outlineWeight
+        if (luminance < 75 && oWeight > 1.0) {
+          const extraCopies = Math.round(oWeight - 1.0);
+          for (let c = 0; c < extraCopies; c++) {
+            pixels.push([r, g, b]);
+          }
+        }
+      }
+    }
+
+    // STEP 3: K-MEANS COLOR QUANTIZATION
+    let palette = selectedPalette;
+    if (!palette && pixels.length > 0) {
+      palette = runKMeans(pixels, kColors, iterations);
+    }
+
+    // STEP 4: REMAP TO PALETTE
+    if (palette && palette.length > 0) {
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] <= 64) {
+          if (snapAlpha) data[i + 3] = 0;
+          continue;
+        }
+        if (snapAlpha) data[i + 3] = 255;
+        const nearest = findNearestColor([data[i], data[i + 1], data[i + 2]], palette);
+        data[i] = nearest[0];
+        data[i + 1] = nearest[1];
+        data[i + 2] = nearest[2];
+      }
+    }
+
+    // STEP 5: OPTIONAL AUTO 1-PX ARCADE OUTLINE
+    if (autoOutlineToggle.checked) {
+      applyArcadeOutline(data, targetW, targetH, autoOutlineColor.value);
+    }
+
+    offCtx.putImageData(imgData, 0, 0);
+    currentSnappedCanvas = offCanvas;
+
+    activeColors.textContent = palette ? palette.length : 'All';
+    renderSplitView();
+  } finally {
+    isUpdatingPreview = false;
+  }
+}
+
+// 1-PIXEL ARCADE OUTLINE GENERATOR
+function applyArcadeOutline(data, w, h, hexColor) {
+  const outlineRGB = hexToRgb(hexColor);
+  const isSolid = (x, y) => {
+    if (x < 0 || x >= w || y < 0 || y >= h) return false;
+    const idx = (y * w + x) * 4;
+    return data[idx + 3] > 64;
+  };
+
+  const toOutline = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      if (data[idx + 3] <= 64) {
+        // Transparent pixel adjacent to solid pixel -> become outline!
+        if (isSolid(x + 1, y) || isSolid(x - 1, y) || isSolid(x, y + 1) || isSolid(x, y - 1)) {
+          toOutline.push(idx);
+        }
+      }
     }
   }
 
-  offCtx.putImageData(imgData, 0, 0);
-  currentSnappedCanvas = offCanvas;
+  toOutline.forEach(idx => {
+    data[idx] = outlineRGB[0];
+    data[idx + 1] = outlineRGB[1];
+    data[idx + 2] = outlineRGB[2];
+    data[idx + 3] = 255;
+  });
+}
 
-  activeColors.textContent = palette ? palette.length : 'All';
-  renderSplitView();
+function hexToRgb(hex) {
+  const clean = hex.replace('#', '');
+  return [
+    parseInt(clean.substring(0, 2), 16) || 0,
+    parseInt(clean.substring(2, 4), 16) || 0,
+    parseInt(clean.substring(4, 6), 16) || 0
+  ];
 }
 
 function runKMeans(pixels, k, iterations) {
@@ -446,7 +582,6 @@ function renderSplitView() {
   const w = rawImageElement.naturalWidth || rawImageElement.width;
   const h = rawImageElement.naturalHeight || rawImageElement.height;
 
-  // Render canvas at native internal resolution
   mainCanvas.width = w;
   mainCanvas.height = h;
 
@@ -482,7 +617,7 @@ function renderSplitView() {
     const stepY = h / targetH;
 
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
-    ctx.lineWidth = Math.max(1, w / 512); // visible line
+    ctx.lineWidth = Math.max(1, w / 512);
     for (let x = splitX; x < w; x += stepX) {
       ctx.beginPath();
       ctx.moveTo(x, 0);

@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
+  <!-- Bundled Tezumie Image-to-Pixel Engine -->
+  <script src="vendor/image-to-pixel.min.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -18,8 +20,8 @@
       </div>
       <div class="header-badges">
         <span class="badge badge-accent">npx serve READY</span>
-        <span class="badge">NON-DESTRUCTIVE PREVIEW</span>
-        <span class="badge badge-neon">STREETS OF REGEX PIPELINE</span>
+        <span class="badge">TEZUMIE ENGINE LOADED</span>
+        <span class="badge badge-neon">OUTLINE PRESERVATION</span>
       </div>
     </header>
 
@@ -45,7 +47,7 @@
 
           <!-- SCALE DOWNSAMPLE BUTTONS -->
           <div class="control-group">
-            <label>DOWNSCALE FACTOR (ARBITRARY SIZES SUPPORTED):</label>
+            <label>DOWNSCALE FACTOR (ARBITRARY SIZES):</label>
             <div class="scale-btn-group" id="scaleGroup">
               <button class="scale-btn" data-divisor="1">1x</button>
               <button class="scale-btn" data-divisor="2">/2</button>
@@ -56,16 +58,92 @@
             <div class="dim-display" id="dimDisplay">Target: <b id="targetDimText">Waiting for image...</b></div>
           </div>
 
-          <!-- COLOR BUDGET SLIDER -->
+          <!-- OUTLINE PRESERVATION WEIGHT (SLIDER + EXACT INPUT) -->
+          <div class="control-group synced-field">
+            <div class="label-row">
+              <label for="outlineWeight">OUTLINE PRESERVE WEIGHT:</label>
+              <input type="number" id="outlineWeightNum" min="1.0" max="4.0" step="0.1" value="1.5" class="num-box">
+            </div>
+            <input type="range" id="outlineWeight" min="1.0" max="4.0" step="0.1" value="1.5">
+            <div class="ticks"><span>1.0x (Standard)</span><span>2.0x</span><span>4.0x (Max Armor)</span></div>
+          </div>
+
+          <!-- EDGE SNAPPING SENSITIVITY (SLIDER + EXACT INPUT) -->
+          <div class="control-group synced-field">
+            <div class="label-row">
+              <label for="edgeSensitivity">EDGE SNAP SENSITIVITY (WALKER):</label>
+              <input type="number" id="edgeSensitivityNum" min="0.1" max="1.0" step="0.05" value="0.5" class="num-box">
+            </div>
+            <input type="range" id="edgeSensitivity" min="0.1" max="1.0" step="0.05" value="0.5">
+            <div class="ticks"><span>0.1 (Strict)</span><span>0.5 (Balanced)</span><span>1.0 (Magnetic)</span></div>
+          </div>
+
+          <!-- AUTO 1-PX ARCADE OUTLINE -->
           <div class="control-group">
-            <label for="colorCount">COLOR BUDGET (K-MEANS): <span id="colorCountVal">16</span> COLORS</label>
-            <input type="range" id="colorCount" min="4" max="64" step="4" value="16">
+            <div class="checkbox-row">
+              <label><input type="checkbox" id="autoOutlineToggle"> AUTO 1-PX ARCADE OUTLINE</label>
+              <input type="color" id="autoOutlineColor" value="#000000" class="color-picker" title="Outline Color">
+            </div>
+          </div>
+
+          <!-- EXTRA FEATURE: TEZUMIE IMAGE-TO-PIXEL INTEGRATION -->
+          <div class="feature-box tezumie-box">
+            <div class="feature-header">
+              <label class="feature-title">
+                <input type="checkbox" id="tezumieToggle"> TEZUMIE DITHER ENGINE
+              </label>
+              <span class="badge-mini">WEBGL SHADER</span>
+            </div>
+            
+            <div class="tezumie-options" id="tezumieOptions" style="display:none;">
+              <div class="control-group">
+                <label for="tezumieMethod">DITHER METHOD:</label>
+                <select id="tezumieMethod">
+                  <option value="floyd-steinberg" selected>Floyd–Steinberg (Diffusion)</option>
+                  <option value="atkinson">Atkinson (Vintage / Mac)</option>
+                  <option value="bayer4">Bayer 4×4 (Crosshatch)</option>
+                  <option value="bayer8">Bayer 8×8 (Ordered)</option>
+                  <option value="bluenoise">Blue Noise (Fine Grain)</option>
+                  <option value="sierra-lite">Sierra Lite</option>
+                  <option value="burkes">Burkes</option>
+                  <option value="none">None (Clean Nearest)</option>
+                </select>
+              </div>
+
+              <div class="control-group synced-field">
+                <div class="label-row">
+                  <label for="tezumieStrength">DITHER STRENGTH:</label>
+                  <input type="number" id="tezumieStrengthNum" min="0.0" max="1.0" step="0.05" value="0.75" class="num-box">
+                </div>
+                <input type="range" id="tezumieStrength" min="0.0" max="1.0" step="0.05" value="0.75">
+                <div class="ticks"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLOR BUDGET (SLIDER + EXACT INPUT) -->
+          <div class="control-group synced-field">
+            <div class="label-row">
+              <label for="colorCount">COLOR BUDGET (K-MEANS):</label>
+              <input type="number" id="colorCountNum" min="4" max="64" step="2" value="16" class="num-box">
+            </div>
+            <input type="range" id="colorCount" min="4" max="64" step="2" value="16">
             <div class="ticks"><span>4</span><span>16</span><span>32</span><span>64</span></div>
+          </div>
+
+          <!-- K-MEANS ITERATIONS (SLIDER + EXACT INPUT) -->
+          <div class="control-group synced-field">
+            <div class="label-row">
+              <label for="kmeansIter">K-MEANS ITERATIONS:</label>
+              <input type="number" id="kmeansIterNum" min="5" max="50" step="1" value="15" class="num-box">
+            </div>
+            <input type="range" id="kmeansIter" min="5" max="50" step="1" value="15">
+            <div class="ticks"><span>5 (Fast)</span><span>15 (Normal)</span><span>50 (High)</span></div>
           </div>
 
           <!-- PALETTE SELECTOR -->
           <div class="control-group">
-            <label for="paletteSelect">COLOR PALETTE PRESET:</label>
+            <label for="paletteSelect">FINAL PALETTE QUANTIZATION:</label>
             <select id="paletteSelect">
               <option value="auto" selected>Auto K-Means (Extract from Image)</option>
               <option value="cyberpunk16">Streets of Regex Cyberpunk (16)</option>
@@ -111,12 +189,12 @@
             </div>
             
             <div class="toolbar-actions">
-              <!-- ZOOM CONTROLS -->
+              <!-- ZOOM CONTROLS (SLIDER + NUMBER BOX + BUTTONS) -->
               <div class="zoom-controls">
                 <button class="btn-tool btn-zoom" id="btnZoomOut" title="Zoom Out">-</button>
                 <input type="range" id="zoomSlider" min="25" max="800" step="25" value="100" class="zoom-slider" title="Zoom Slider">
                 <button class="btn-tool btn-zoom" id="btnZoomIn" title="Zoom In">+</button>
-                <span class="zoom-text" id="zoomValueText">100%</span>
+                <input type="number" id="zoomNumInput" min="25" max="800" step="25" value="100" class="zoom-num-box" title="Exact Zoom %">%
                 <button class="btn-tool" id="btnResetZoom" title="Reset Zoom to Native 1:1 Scale">1:1 NATIVE</button>
               </div>
 
@@ -154,6 +232,7 @@
                 <span>Original: <b id="origRes">-</b></span>
                 <span>Target: <b id="snappedRes">-</b></span>
                 <span>Colors: <b id="activeColors">-</b></span>
+                <span>Pipeline: <b id="pipelineTag">PixelSnapper</b></span>
                 <span>Zoom: <b id="statsZoom">100%</b></span>
                 <span>Split: <b id="splitPercent">50%</b></span>
               </div>
