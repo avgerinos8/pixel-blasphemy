@@ -20,8 +20,8 @@
       </div>
       <div class="header-badges">
         <span class="badge badge-accent">npx serve READY</span>
-        <span class="badge">TEZUMIE ENGINE LOADED</span>
-        <span class="badge badge-neon">OUTLINE PRESERVATION</span>
+        <span class="badge">TEZUMIE LOADED</span>
+        <span class="badge badge-neon">PALETTE EXTRACTOR</span>
       </div>
     </header>
 
@@ -34,7 +34,7 @@
     <!-- TAB 1: PIXEL SNAPPER STUDIO -->
     <main class="tab-content active" id="tab-snapper">
       <div class="workbench">
-        <!-- LEFT: CONTROLS PANEL -->
+        <!-- LEFT: CONTROLS PANEL (100% NO-SCROLL VIEWPORT) -->
         <aside class="panel controls-panel">
           <div class="panel-header">
             <h2>PROCESSING CONTROLS</h2>
@@ -47,7 +47,10 @@
 
           <!-- SCALE DOWNSAMPLE BUTTONS -->
           <div class="control-group">
-            <label>DOWNSCALE FACTOR (ARBITRARY SIZES):</label>
+            <div class="label-row">
+              <label>DOWNSCALE FACTOR:</label>
+              <span class="dim-badge" id="targetDimText">Waiting...</span>
+            </div>
             <div class="scale-btn-group" id="scaleGroup">
               <button class="scale-btn" data-divisor="1">1x</button>
               <button class="scale-btn" data-divisor="2">/2</button>
@@ -55,38 +58,37 @@
               <button class="scale-btn active" data-divisor="8">/8</button>
               <button class="scale-btn" data-divisor="16">/16</button>
             </div>
-            <div class="dim-display" id="dimDisplay">Target: <b id="targetDimText">Waiting for image...</b></div>
           </div>
 
-          <!-- OUTLINE PRESERVATION WEIGHT (SLIDER + EXACT INPUT) -->
-          <div class="control-group synced-field">
-            <div class="label-row">
-              <label for="outlineWeight">OUTLINE PRESERVE WEIGHT:</label>
-              <input type="number" id="outlineWeightNum" min="1.0" max="4.0" step="0.1" value="1.5" class="num-box">
+          <!-- 2-COLUMN SLIDERS: OUTLINE WEIGHT & EDGE SENSITIVITY -->
+          <div class="controls-grid">
+            <div class="control-group synced-field">
+              <div class="label-row">
+                <label for="outlineWeight">OUTLINE WT:</label>
+                <input type="number" id="outlineWeightNum" min="1.0" max="4.0" step="0.1" value="1.5" class="num-box">
+              </div>
+              <input type="range" id="outlineWeight" min="1.0" max="4.0" step="0.1" value="1.5">
+              <div class="ticks"><span>1.0</span><span>2.0</span><span>4.0</span></div>
             </div>
-            <input type="range" id="outlineWeight" min="1.0" max="4.0" step="0.1" value="1.5">
-            <div class="ticks"><span>1.0x (Standard)</span><span>2.0x</span><span>4.0x (Max Armor)</span></div>
-          </div>
 
-          <!-- EDGE SNAPPING SENSITIVITY (SLIDER + EXACT INPUT) -->
-          <div class="control-group synced-field">
-            <div class="label-row">
-              <label for="edgeSensitivity">EDGE SNAP SENSITIVITY (WALKER):</label>
-              <input type="number" id="edgeSensitivityNum" min="0.1" max="1.0" step="0.05" value="0.5" class="num-box">
-            </div>
-            <input type="range" id="edgeSensitivity" min="0.1" max="1.0" step="0.05" value="0.5">
-            <div class="ticks"><span>0.1 (Strict)</span><span>0.5 (Balanced)</span><span>1.0 (Magnetic)</span></div>
-          </div>
-
-          <!-- AUTO 1-PX ARCADE OUTLINE -->
-          <div class="control-group">
-            <div class="checkbox-row">
-              <label><input type="checkbox" id="autoOutlineToggle"> AUTO 1-PX ARCADE OUTLINE</label>
-              <input type="color" id="autoOutlineColor" value="#000000" class="color-picker" title="Outline Color">
+            <div class="control-group synced-field">
+              <div class="label-row">
+                <label for="edgeSensitivity">EDGE SNAP:</label>
+                <input type="number" id="edgeSensitivityNum" min="0.1" max="1.0" step="0.05" value="0.5" class="num-box">
+              </div>
+              <input type="range" id="edgeSensitivity" min="0.1" max="1.0" step="0.05" value="0.5">
+              <div class="ticks"><span>0.1</span><span>0.5</span><span>1.0</span></div>
             </div>
           </div>
 
-          <!-- EXTRA FEATURE: TEZUMIE IMAGE-TO-PIXEL INTEGRATION -->
+          <!-- CHECKBOXES ROW: AUTO OUTLINE & HARD ALPHA -->
+          <div class="checkbox-row">
+            <label><input type="checkbox" id="autoOutlineToggle"> 1-PX OUTLINE</label>
+            <input type="color" id="autoOutlineColor" value="#000000" class="color-picker" title="Outline Color">
+            <label><input type="checkbox" id="snapAlpha" checked> HARD ALPHA</label>
+          </div>
+
+          <!-- TEZUMIE IMAGE-TO-PIXEL INTEGRATION -->
           <div class="feature-box tezumie-box">
             <div class="feature-header">
               <label class="feature-title">
@@ -96,55 +98,58 @@
             </div>
             
             <div class="tezumie-options" id="tezumieOptions" style="display:none;">
-              <div class="control-group">
-                <label for="tezumieMethod">DITHER METHOD:</label>
-                <select id="tezumieMethod">
-                  <option value="floyd-steinberg" selected>Floyd–Steinberg (Diffusion)</option>
-                  <option value="atkinson">Atkinson (Vintage / Mac)</option>
-                  <option value="bayer4">Bayer 4×4 (Crosshatch)</option>
-                  <option value="bayer8">Bayer 8×8 (Ordered)</option>
-                  <option value="bluenoise">Blue Noise (Fine Grain)</option>
-                  <option value="sierra-lite">Sierra Lite</option>
-                  <option value="burkes">Burkes</option>
-                  <option value="none">None (Clean Nearest)</option>
-                </select>
-              </div>
-
-              <div class="control-group synced-field">
-                <div class="label-row">
-                  <label for="tezumieStrength">DITHER STRENGTH:</label>
-                  <input type="number" id="tezumieStrengthNum" min="0.0" max="1.0" step="0.05" value="0.75" class="num-box">
+              <div class="tezumie-grid">
+                <div class="control-group">
+                  <label for="tezumieMethod">METHOD:</label>
+                  <select id="tezumieMethod" class="compact-select">
+                    <option value="floyd-steinberg" selected>Floyd-Steinberg</option>
+                    <option value="atkinson">Atkinson</option>
+                    <option value="bayer4">Bayer 4x4</option>
+                    <option value="bayer8">Bayer 8x8</option>
+                    <option value="bluenoise">Blue Noise</option>
+                    <option value="sierra-lite">Sierra Lite</option>
+                    <option value="burkes">Burkes</option>
+                    <option value="none">None (Nearest)</option>
+                  </select>
                 </div>
-                <input type="range" id="tezumieStrength" min="0.0" max="1.0" step="0.05" value="0.75">
-                <div class="ticks"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+                <div class="control-group synced-field">
+                  <div class="label-row">
+                    <label for="tezumieStrength">STRENGTH:</label>
+                    <input type="number" id="tezumieStrengthNum" min="0.0" max="1.0" step="0.05" value="0.75" class="num-box">
+                  </div>
+                  <input type="range" id="tezumieStrength" min="0.0" max="1.0" step="0.05" value="0.75">
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- COLOR BUDGET (SLIDER + EXACT INPUT) -->
-          <div class="control-group synced-field">
-            <div class="label-row">
-              <label for="colorCount">COLOR BUDGET (K-MEANS):</label>
-              <input type="number" id="colorCountNum" min="4" max="64" step="2" value="16" class="num-box">
+          <!-- 2-COLUMN SLIDERS: K-MEANS COLOR BUDGET & ITERATIONS -->
+          <div class="controls-grid">
+            <div class="control-group synced-field">
+              <div class="label-row">
+                <label for="colorCount">COLOR BUDGET:</label>
+                <input type="number" id="colorCountNum" min="4" max="64" step="2" value="16" class="num-box">
+              </div>
+              <input type="range" id="colorCount" min="4" max="64" step="2" value="16">
+              <div class="ticks"><span>4</span><span>16</span><span>32</span><span>64</span></div>
             </div>
-            <input type="range" id="colorCount" min="4" max="64" step="2" value="16">
-            <div class="ticks"><span>4</span><span>16</span><span>32</span><span>64</span></div>
+
+            <div class="control-group synced-field">
+              <div class="label-row">
+                <label for="kmeansIter">K-MEANS ITER:</label>
+                <input type="number" id="kmeansIterNum" min="5" max="50" step="1" value="15" class="num-box">
+              </div>
+              <input type="range" id="kmeansIter" min="5" max="50" step="1" value="15">
+              <div class="ticks"><span>5 (Fast)</span><span>15</span><span>50</span></div>
+            </div>
           </div>
 
-          <!-- K-MEANS ITERATIONS (SLIDER + EXACT INPUT) -->
-          <div class="control-group synced-field">
+          <!-- PALETTE SELECTOR & REFERENCE IMAGE UPLOAD -->
+          <div class="control-group palette-section">
             <div class="label-row">
-              <label for="kmeansIter">K-MEANS ITERATIONS:</label>
-              <input type="number" id="kmeansIterNum" min="5" max="50" step="1" value="15" class="num-box">
+              <label for="paletteSelect">PALETTE QUANTIZATION:</label>
             </div>
-            <input type="range" id="kmeansIter" min="5" max="50" step="1" value="15">
-            <div class="ticks"><span>5 (Fast)</span><span>15 (Normal)</span><span>50 (High)</span></div>
-          </div>
-
-          <!-- PALETTE SELECTOR -->
-          <div class="control-group">
-            <label for="paletteSelect">FINAL PALETTE QUANTIZATION:</label>
-            <select id="paletteSelect">
+            <select id="paletteSelect" class="compact-select">
               <option value="auto" selected>Auto K-Means (Extract from Image)</option>
               <option value="cyberpunk16">Streets of Regex Cyberpunk (16)</option>
               <option value="endesga32">Endesga 32 (Indie Standard)</option>
@@ -152,12 +157,22 @@
               <option value="pico8">Pico-8 (16 Colors)</option>
               <option value="gameboy">Game Boy Classic (4 Shades)</option>
             </select>
-            <div class="palette-preview" id="palettePreview"></div>
-          </div>
 
-          <!-- ALPHA TOGGLE -->
-          <div class="control-group checkbox-group">
-            <label><input type="checkbox" id="snapAlpha" checked> Clean Alpha Mask (Hard Binary)</label>
+            <!-- REFERENCE IMAGE PALETTE UPLOADER -->
+            <div class="palette-ref-box">
+              <input type="file" id="paletteFileInput" accept="image/*" style="display:none;">
+              <div class="palette-ref-row" id="paletteRefRow">
+                <button type="button" class="btn-palette-upload" id="btnUploadPaletteRef">&#128247; UPLOAD PALETTE REFERENCE IMAGE</button>
+                <button type="button" class="btn-clear-palette" id="btnClearPaletteRef" style="display:none;" title="Revert to active image colors">&#10005; CLEAR</button>
+              </div>
+              <div class="palette-ref-badge" id="paletteRefBadge" style="display:none;">
+                <img id="paletteRefThumb" class="palette-ref-thumb" alt="Thumb">
+                <span id="paletteRefName" class="palette-ref-filename">palette.png</span>
+                <span class="badge-active-ref">K-MEANS SAMPLED</span>
+              </div>
+            </div>
+
+            <div class="palette-preview" id="palettePreview"></div>
           </div>
 
           <!-- DOWNLOAD ACTION -->
@@ -167,16 +182,14 @@
             </button>
           </div>
 
-          <!-- BATCH SECTION -->
-          <div class="batch-section">
-            <div class="panel-header">
-              <h3>BATCH FILE QUEUE (<span id="batchCount">0</span>)</h3>
-            </div>
+          <!-- BATCH SECTION (ACCORDION DRAWER TO PREVENT SCROLL) -->
+          <details class="batch-drawer" id="batchDrawer">
+            <summary class="batch-summary">&#128193; BATCH QUEUE (<span id="batchCount">0</span>)</summary>
             <ul class="batch-list" id="batchList">
-              <li class="empty-hint">Drop multiple files or a folder to batch process.</li>
+              <li class="empty-hint">Drop multiple files to batch.</li>
             </ul>
-            <button class="btn btn-accent" id="btnProcessBatch" disabled>BATCH PROCESS ALL</button>
-          </div>
+            <button class="btn btn-accent w-full" id="btnProcessBatch" disabled>BATCH PROCESS ALL</button>
+          </details>
         </aside>
 
         <!-- RIGHT: VIEWER & WORKSPACE -->
@@ -189,13 +202,14 @@
             </div>
             
             <div class="toolbar-actions">
-              <!-- ZOOM CONTROLS (SLIDER + NUMBER BOX + BUTTONS) -->
+              <!-- ZOOM CONTROLS -->
               <div class="zoom-controls">
                 <button class="btn-tool btn-zoom" id="btnZoomOut" title="Zoom Out">-</button>
                 <input type="range" id="zoomSlider" min="25" max="800" step="25" value="100" class="zoom-slider" title="Zoom Slider">
                 <button class="btn-tool btn-zoom" id="btnZoomIn" title="Zoom In">+</button>
                 <input type="number" id="zoomNumInput" min="25" max="800" step="25" value="100" class="zoom-num-box" title="Exact Zoom %">%
-                <button class="btn-tool" id="btnResetZoom" title="Reset Zoom to Native 1:1 Scale">1:1 NATIVE</button>
+                <button class="btn-tool" id="btnFitZoom" title="Fit Sprite inside Viewer Bounds">&#9635; FIT</button>
+                <button class="btn-tool" id="btnResetZoom" title="Reset Zoom to Native 1:1 Scale">1:1</button>
               </div>
 
               <!-- GRID TOGGLE BUTTON -->

@@ -1,4 +1,4 @@
-﻿// PixelBlasphemy Studio v1.3 - Tezumie Dither Engine + Outlines & Bi-directional Synced Controls
+﻿// PixelBlasphemy Studio v1.4 - Reference Palette Extractor + Tezumie Dither Engine & 100% Zero-Scroll Layout
 
 const PALETTES = {
   auto: null,
@@ -30,7 +30,7 @@ const PALETTES = {
   ]
 };
 
-// State
+// Global State
 let loadedFilename = "image.png";
 let rawImageElement = null;
 let currentSnappedCanvas = null;
@@ -38,14 +38,24 @@ let currentDivisor = 8;
 let splitPosition = 0.5;
 let zoomPercent = 100;
 let showGrid = true;
-let isUpdatingPreview = false;
 let batchFiles = [];
+
+// Concurrency & Session Management
+let previewSessionId = 0;
+let isUpdatingPreview = false;
+let needsAnotherUpdate = false;
+let previewTimeout = null;
+
+// Reference Palette State
+let paletteRefPixels = null;
+let paletteRefName = "";
 
 // DOM Elements
 const dropZone = document.getElementById('dropZone');
 const dropPrompt = document.getElementById('dropPrompt');
 const fileInput = document.getElementById('fileInput');
 const canvasWrapper = document.getElementById('canvasWrapper');
+const viewportScroller = document.getElementById('viewportScroller');
 const canvasScaler = document.getElementById('canvasScaler');
 const mainCanvas = document.getElementById('mainCanvas');
 const splitBar = document.getElementById('splitBar');
@@ -63,6 +73,7 @@ const zoomSlider = document.getElementById('zoomSlider');
 const zoomNumInput = document.getElementById('zoomNumInput');
 const btnZoomIn = document.getElementById('btnZoomIn');
 const btnZoomOut = document.getElementById('btnZoomOut');
+const btnFitZoom = document.getElementById('btnFitZoom');
 const btnResetZoom = document.getElementById('btnResetZoom');
 const btnToggleGrid = document.getElementById('btnToggleGrid');
 
@@ -80,6 +91,7 @@ const kmeansIterNum = document.getElementById('kmeansIterNum');
 
 const autoOutlineToggle = document.getElementById('autoOutlineToggle');
 const autoOutlineColor = document.getElementById('autoOutlineColor');
+const snapAlpha = document.getElementById('snapAlpha');
 
 // Tezumie Integration DOM
 const tezumieToggle = document.getElementById('tezumieToggle');
@@ -88,8 +100,15 @@ const tezumieMethod = document.getElementById('tezumieMethod');
 const tezumieStrength = document.getElementById('tezumieStrength');
 const tezumieStrengthNum = document.getElementById('tezumieStrengthNum');
 
+// Palette DOM
 const paletteSelect = document.getElementById('paletteSelect');
 const palettePreview = document.getElementById('palettePreview');
+const paletteFileInput = document.getElementById('paletteFileInput');
+const btnUploadPaletteRef = document.getElementById('btnUploadPaletteRef');
+const btnClearPaletteRef = document.getElementById('btnClearPaletteRef');
+const paletteRefBadge = document.getElementById('paletteRefBadge');
+const paletteRefThumb = document.getElementById('paletteRefThumb');
+const paletteRefNameEl = document.getElementById('paletteRefName');
 
 // Download & Stats
 const btnDownload = document.getElementById('btnDownload');
@@ -101,7 +120,7 @@ const pipelineTag = document.getElementById('pipelineTag');
 const statsZoom = document.getElementById('statsZoom');
 const splitPercent = document.getElementById('splitPercent');
 
-// TABS
+// TABS NAVIGATION
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -136,11 +155,17 @@ function syncSliderAndNum(slider, numBox, callback) {
   });
 }
 
-// SETUP SYNCED FIELDS
+// SETUP SYNCED CONTROLS
 syncSliderAndNum(outlineWeight, outlineWeightNum, () => triggerPreviewDebounced());
 syncSliderAndNum(edgeSensitivity, edgeSensitivityNum, () => triggerPreviewDebounced());
-syncSliderAndNum(colorCount, colorCountNum, () => triggerPreviewDebounced());
-syncSliderAndNum(kmeansIter, kmeansIterNum, () => triggerPreviewDebounced());
+syncSliderAndNum(colorCount, colorCountNum, () => {
+  updatePalettePreview();
+  triggerPreviewDebounced();
+});
+syncSliderAndNum(kmeansIter, kmeansIterNum, () => {
+  updatePalettePreview();
+  triggerPreviewDebounced();
+});
 syncSliderAndNum(tezumieStrength, tezumieStrengthNum, () => triggerPreviewDebounced());
 
 // TEZUMIE TOGGLE & METHOD
@@ -152,8 +177,9 @@ tezumieMethod.addEventListener('change', () => triggerPreviewDebounced());
 
 autoOutlineToggle.addEventListener('change', () => triggerPreviewDebounced());
 autoOutlineColor.addEventListener('input', () => triggerPreviewDebounced());
+snapAlpha.addEventListener('change', () => triggerPreviewDebounced());
 
-// SCALE BUTTONS (/2, /4, /8, /16, 1x)
+// SCALE BUTTONS (1x, /2, /4, /8, /16)
 scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     scaleGroup.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
@@ -164,42 +190,167 @@ scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
   });
 });
 
-// PALETTE
+// REFERENCE IMAGE PALETTE UPLOADER
+btnUploadPaletteRef.addEventListener('click', (e) => {
+  e.stopPropagation();
+  paletteFileInput.click();
+});
+
+paletteFileInput.addEventListener('change', (e) => {
+  if (e.target.files && e.target.files[0]) {
+    loadPaletteReferenceImage(e.target.files[0]);
+  }
+});
+
+function loadPaletteReferenceImage(file) {
+  paletteRefName = file.name;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      // Sample pixels from reference image using an offscreen canvas
+      // Downsample reference image to max 192px for instant K-Means performance
+      const maxDim = Math.max(img.width, img.height);
+      const scale = Math.min(1, 192 / maxDim);
+      const pw = Math.max(1, Math.round(img.width * scale));
+      const ph = Math.max(1, Math.round(img.height * scale));
+
+      const pCanvas = document.createElement('canvas');
+      pCanvas.width = pw;
+      pCanvas.height = ph;
+      const pCtx = pCanvas.getContext('2d');
+      pCtx.drawImage(img, 0, 0, pw, ph);
+
+      const pData = pCtx.getImageData(0, 0, pw, ph).data;
+      const pixels = [];
+      for (let i = 0; i < pData.length; i += 4) {
+        if (pData[i + 3] > 32) { // Skip transparent pixels
+          pixels.push([pData[i], pData[i + 1], pData[i + 2]]);
+        }
+      }
+
+      if (pixels.length === 0) {
+        alert("The uploaded palette image appears to be completely transparent.");
+        return;
+      }
+
+      paletteRefPixels = pixels;
+
+      // Update UI
+      paletteRefThumb.src = ev.target.result;
+      paletteRefNameEl.textContent = paletteRefName;
+      paletteRefBadge.style.display = 'flex';
+      btnClearPaletteRef.style.display = 'inline-block';
+      btnUploadPaletteRef.textContent = '📷 REPLACE REF IMAGE';
+
+      // Ensure 'reference' option exists in select and select it
+      let refOpt = paletteSelect.querySelector('option[value="reference"]');
+      if (!refOpt) {
+        refOpt = document.createElement('option');
+        refOpt.value = 'reference';
+        paletteSelect.insertBefore(refOpt, paletteSelect.firstChild);
+      }
+      refOpt.textContent = `★ Custom Ref: ${paletteRefName} (K-Means)`;
+      paletteSelect.value = 'reference';
+
+      updatePalettePreview();
+      triggerPreviewDebounced();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// CLEAR REFERENCE PALETTE
+btnClearPaletteRef.addEventListener('click', (e) => {
+  e.stopPropagation();
+  paletteRefPixels = null;
+  paletteRefName = "";
+  paletteFileInput.value = '';
+
+  paletteRefBadge.style.display = 'none';
+  btnClearPaletteRef.style.display = 'none';
+  btnUploadPaletteRef.textContent = '📷 UPLOAD PALETTE REFERENCE IMAGE';
+
+  const refOpt = paletteSelect.querySelector('option[value="reference"]');
+  if (refOpt) refOpt.remove();
+
+  paletteSelect.value = 'auto';
+  updatePalettePreview();
+  triggerPreviewDebounced();
+});
+
+// PALETTE PREVIEW SWATCHES
 function updatePalettePreview() {
-  const p = PALETTES[paletteSelect.value];
+  const pChoice = paletteSelect.value;
   palettePreview.innerHTML = '';
-  if (!p) {
-    palettePreview.innerHTML = '<span style="color:#64748b;font-size:0.75rem;padding:2px;">Auto Dynamic K-Means</span>';
+
+  if (pChoice === 'reference' && paletteRefPixels && paletteRefPixels.length > 0) {
+    const kColors = parseInt(colorCount.value) || 16;
+    const iters = Math.min(10, parseInt(kmeansIter.value) || 10);
+    const extracted = runKMeans(paletteRefPixels, kColors, iters);
+    renderSwatches(extracted);
     return;
   }
-  p.forEach(c => {
+
+  const preset = PALETTES[pChoice];
+  if (preset) {
+    renderSwatches(preset);
+  } else {
+    palettePreview.innerHTML = '<span style="color:#64748b;font-size:0.65rem;padding:1px 4px;">Auto K-Means (Active Image)</span>';
+  }
+}
+
+function renderSwatches(colorList) {
+  palettePreview.innerHTML = '';
+  if (!colorList || colorList.length === 0) return;
+  colorList.forEach(c => {
     const d = document.createElement('div');
     d.style.backgroundColor = `rgb(${c[0]},${c[1]},${c[2]})`;
+    d.title = `rgb(${c[0]},${c[1]},${c[2]})`;
     palettePreview.appendChild(d);
   });
 }
+
 paletteSelect.addEventListener('change', () => {
   updatePalettePreview();
   triggerPreviewDebounced();
 });
 updatePalettePreview();
 
-document.getElementById('snapAlpha').addEventListener('change', () => triggerPreviewDebounced());
-
-// ZOOM CONTROLS (SLIDER + NUM BOX SYNC)
+// ZOOM CONTROLS (FIT, NATIVE 1:1, SLIDER & NUM BOX)
 function setZoom(val) {
-  zoomPercent = Math.max(25, Math.min(800, val));
+  zoomPercent = Math.max(25, Math.min(800, Math.round(val)));
   zoomSlider.value = zoomPercent;
   zoomNumInput.value = zoomPercent;
   statsZoom.textContent = `${zoomPercent}%`;
   applyZoomToCanvas();
 }
 
+function fitZoomToContainer() {
+  if (!rawImageElement) return;
+  const containerW = viewportScroller.clientWidth - 24;
+  const containerH = viewportScroller.clientHeight - 24;
+  const imgW = rawImageElement.naturalWidth || rawImageElement.width;
+  const imgH = rawImageElement.naturalHeight || rawImageElement.height;
+
+  if (containerW <= 0 || containerH <= 0 || imgW <= 0 || imgH <= 0) return;
+
+  const scale = Math.min(containerW / imgW, containerH / imgH);
+  setZoom(Math.floor(scale * 100));
+}
+
 zoomSlider.addEventListener('input', () => setZoom(parseInt(zoomSlider.value) || 100));
 zoomNumInput.addEventListener('input', () => setZoom(parseInt(zoomNumInput.value) || 100));
 btnZoomIn.addEventListener('click', () => setZoom(zoomPercent + 25));
 btnZoomOut.addEventListener('click', () => setZoom(zoomPercent - 25));
-btnResetZoom.addEventListener('click', () => setZoom(100)); // 1:1 Native Scale
+btnFitZoom.addEventListener('click', () => fitZoomToContainer());
+btnResetZoom.addEventListener('click', () => setZoom(100));
+
+window.addEventListener('resize', () => {
+  // If in fit zoom or responsive mode, maintain layout
+  applyZoomToCanvas();
+});
 
 function applyZoomToCanvas() {
   if (!rawImageElement) return;
@@ -230,7 +381,7 @@ btnToggleGrid.addEventListener('click', () => {
   renderSplitView();
 });
 
-// FILE INPUT (TRIGGERED ONLY BY PROMPT OR LOAD BUTTON, NEVER CANVAS)
+// FILE DRAG & DROP / SELECTION
 dropPrompt.addEventListener('click', (e) => {
   e.stopPropagation();
   fileInput.click();
@@ -279,7 +430,7 @@ function updateBatchList() {
   document.getElementById('btnProcessBatch').disabled = batchFiles.length === 0;
 }
 
-// LOAD IMAGE
+// LOAD IMAGE INTO WORKBENCH
 function loadImage(file) {
   loadedFilename = file.name;
   const reader = new FileReader();
@@ -304,12 +455,23 @@ function loadImage(file) {
       else if (maxDim >= 256) selectDivisor(4);
       else selectDivisor(1);
 
-      if (maxDim <= 128) setZoom(400);
-      else if (maxDim <= 256) setZoom(200);
-      else setZoom(100);
-
       updateDimensionsUI();
-      triggerPreviewDebounced();
+
+      // Fit to container dimensions if larger than view area
+      setTimeout(() => {
+        const scrollerW = viewportScroller.clientWidth - 30;
+        const scrollerH = viewportScroller.clientHeight - 30;
+        if (w > scrollerW || h > scrollerH) {
+          fitZoomToContainer();
+        } else if (maxDim <= 128) {
+          setZoom(400);
+        } else if (maxDim <= 256) {
+          setZoom(200);
+        } else {
+          setZoom(100);
+        }
+        triggerPreviewDebounced();
+      }, 20);
     };
     img.src = e.target.result;
   };
@@ -331,7 +493,7 @@ function updateDimensionsUI() {
   const targetH = Math.max(1, Math.round(h / currentDivisor));
 
   origRes.textContent = `${w}x${h}`;
-  targetDimText.textContent = `${targetW} × ${targetH} px (/${currentDivisor})`;
+  targetDimText.textContent = `${targetW}x${targetH} px (/${currentDivisor})`;
   snappedRes.textContent = `${targetW}x${targetH}`;
 
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
@@ -353,26 +515,31 @@ btnCloseImage.addEventListener('click', () => {
   origRes.textContent = '-';
   snappedRes.textContent = '-';
   activeColors.textContent = '-';
-  targetDimText.textContent = 'Waiting for image...';
+  targetDimText.textContent = 'Waiting...';
   downloadNameLabel.textContent = '';
   btnDownload.disabled = true;
 
   fileInput.value = '';
 });
 
-// DEBOUNCED PREVIEW TO KEEP UI ULTRA RESPONSIVE
-let previewTimeout = null;
+// DEBOUNCED PREVIEW TRIGGER
 function triggerPreviewDebounced() {
   if (previewTimeout) clearTimeout(previewTimeout);
   previewTimeout = setTimeout(() => {
     updatePreviewAsync();
-  }, 40);
+  }, 30);
 }
 
-// NON-DESTRUCTIVE PREVIEW PIPELINE (TEZUMIE + OUTLINE PRESERVATION + QUANTIZATION)
+// NON-DESTRUCTIVE PREVIEW PIPELINE (STRICT DETERMINISTIC CONCURRENCY GUARD)
 async function updatePreviewAsync() {
-  if (!rawImageElement || isUpdatingPreview) return;
+  if (!rawImageElement) return;
+  
+  if (isUpdatingPreview) {
+    needsAnotherUpdate = true;
+    return;
+  }
   isUpdatingPreview = true;
+  const currentSession = ++previewSessionId;
 
   try {
     const w = rawImageElement.naturalWidth || rawImageElement.width;
@@ -383,10 +550,9 @@ async function updatePreviewAsync() {
     const kColors = parseInt(colorCount.value) || 16;
     const iterations = parseInt(kmeansIter.value) || 15;
     const oWeight = parseFloat(outlineWeight.value) || 1.5;
-    const selectedPalette = PALETTES[paletteSelect.value];
-    const snapAlpha = document.getElementById('snapAlpha').checked;
+    const snapAlphaChecked = snapAlpha.checked;
 
-    // Base offscreen downsample
+    // Offscreen downsampling canvas
     let offCanvas = document.createElement('canvas');
     offCanvas.width = targetW;
     offCanvas.height = targetH;
@@ -394,90 +560,134 @@ async function updatePreviewAsync() {
     offCtx.imageSmoothingEnabled = false;
     offCtx.drawImage(rawImageElement, 0, 0, targetW, targetH);
 
-    // STEP 1: TEZUMIE DITHER ENGINE (OPTIONAL PRE-PASS)
+    // STEP 1: EXTRACT PALETTE
+    // Priority:
+    // A. Reference Image (if uploaded and selected in dropdown)
+    // B. Preset Palette (if selected from dropdown)
+    // C. Auto K-Means (sampled from current image with outline preservation)
+    let palette = null;
+    const pChoice = paletteSelect.value;
+
+    if (pChoice === 'reference' && paletteRefPixels && paletteRefPixels.length > 0) {
+      palette = runKMeans(paletteRefPixels, kColors, iterations);
+    } else if (PALETTES[pChoice]) {
+      palette = PALETTES[pChoice];
+    } else {
+      // Auto: Extract from current downsampled target image
+      const imgData = offCtx.getImageData(0, 0, targetW, targetH);
+      const data = imgData.data;
+      const pixels = [];
+
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] > 64) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+          pixels.push([r, g, b]);
+
+          // Outline preservation weight
+          if (luminance < 75 && oWeight > 1.0) {
+            const extraCopies = Math.round(oWeight - 1.0);
+            for (let c = 0; c < extraCopies; c++) {
+              pixels.push([r, g, b]);
+            }
+          }
+        }
+      }
+
+      if (pixels.length > 0) {
+        palette = runKMeans(pixels, kColors, iterations);
+      }
+    }
+
+    // Update dynamic palette preview
+    if (palette && (pChoice === 'auto' || pChoice === 'reference')) {
+      renderSwatches(palette);
+    }
+
+    if (currentSession !== previewSessionId) return;
+
+    // STEP 2: QUANTIZATION & DITHER PASS
     const useTezumie = tezumieToggle.checked && window.ImageToPixel && window.ImageToPixel.pixelate;
-    if (useTezumie) {
+
+    if (useTezumie && palette && palette.length > 0) {
       pipelineTag.textContent = "Tezumie+PixelSnapper";
+      const paletteHexList = palette.map(c => rgbToHex(c[0], c[1], c[2]));
       const method = tezumieMethod.value;
       const strength = parseFloat(tezumieStrength.value) || 0.75;
 
       try {
         const result = await window.ImageToPixel.pixelate(offCanvas, {
-          size: { width: targetW, height: targetH },
+          size: { mode: 'width', width: targetW, height: targetH },
+          palette: { source: 'custom', colors: paletteHexList },
           dither: { method: method, strength: strength }
         });
+
+        if (currentSession !== previewSessionId) return;
+
         if (result && typeof result.toCanvas === 'function') {
           offCanvas = result.toCanvas(1);
           offCtx = offCanvas.getContext('2d');
         }
       } catch (err) {
         console.warn("Tezumie pass fallback to native:", err);
+        remapToPalette(offCtx, targetW, targetH, palette, snapAlphaChecked);
       }
-    } else {
+    } else if (palette && palette.length > 0) {
       pipelineTag.textContent = "PixelSnapper";
+      remapToPalette(offCtx, targetW, targetH, palette, snapAlphaChecked);
     }
 
-    // STEP 2: PIXEL DATA & OUTLINE PRESERVATION WEIGHTING
-    const imgData = offCtx.getImageData(0, 0, targetW, targetH);
-    const data = imgData.data;
+    if (currentSession !== previewSessionId) return;
 
-    // Collect pixels for K-Means with outline weighting
-    const pixels = [];
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] > 64) {
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-        pixels.push([r, g, b]);
-
-        // If dark/outline pixel, duplicate entry based on outlineWeight
-        if (luminance < 75 && oWeight > 1.0) {
-          const extraCopies = Math.round(oWeight - 1.0);
-          for (let c = 0; c < extraCopies; c++) {
-            pixels.push([r, g, b]);
-          }
-        }
-      }
-    }
-
-    // STEP 3: K-MEANS COLOR QUANTIZATION
-    let palette = selectedPalette;
-    if (!palette && pixels.length > 0) {
-      palette = runKMeans(pixels, kColors, iterations);
-    }
-
-    // STEP 4: REMAP TO PALETTE
-    if (palette && palette.length > 0) {
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] <= 64) {
-          if (snapAlpha) data[i + 3] = 0;
-          continue;
-        }
-        if (snapAlpha) data[i + 3] = 255;
-        const nearest = findNearestColor([data[i], data[i + 1], data[i + 2]], palette);
-        data[i] = nearest[0];
-        data[i + 1] = nearest[1];
-        data[i + 2] = nearest[2];
-      }
-    }
-
-    // STEP 5: OPTIONAL AUTO 1-PX ARCADE OUTLINE
+    // STEP 3: OPTIONAL AUTO 1-PX ARCADE OUTLINE
     if (autoOutlineToggle.checked) {
-      applyArcadeOutline(data, targetW, targetH, autoOutlineColor.value);
+      applyArcadeOutline(offCtx, targetW, targetH, autoOutlineColor.value);
     }
 
-    offCtx.putImageData(imgData, 0, 0);
-    currentSnappedCanvas = offCanvas;
+    // STEP 4: HARD ALPHA CLAMP (IF REQUESTED)
+    if (snapAlphaChecked) {
+      clampAlpha(offCtx, targetW, targetH);
+    }
 
+    if (currentSession !== previewSessionId) return;
+
+    currentSnappedCanvas = offCanvas;
     activeColors.textContent = palette ? palette.length : 'All';
     renderSplitView();
   } finally {
     isUpdatingPreview = false;
+    if (needsAnotherUpdate) {
+      needsAnotherUpdate = false;
+      triggerPreviewDebounced();
+    }
   }
 }
 
+// DIRECT PALETTE REMAPPING (NEAREST NEIGHBOR EUCLIDEAN DISTANCE)
+function remapToPalette(ctx, w, h, palette, snapAlphaChecked) {
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] <= 64) {
+      if (snapAlphaChecked) data[i + 3] = 0;
+      continue;
+    }
+    if (snapAlphaChecked) data[i + 3] = 255;
+    const nearest = findNearestColor([data[i], data[i + 1], data[i + 2]], palette);
+    data[i] = nearest[0];
+    data[i + 1] = nearest[1];
+    data[i + 2] = nearest[2];
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
 // 1-PIXEL ARCADE OUTLINE GENERATOR
-function applyArcadeOutline(data, w, h, hexColor) {
+function applyArcadeOutline(ctx, w, h, hexColor) {
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
   const outlineRGB = hexToRgb(hexColor);
+
   const isSolid = (x, y) => {
     if (x < 0 || x >= w || y < 0 || y >= h) return false;
     const idx = (y * w + x) * 4;
@@ -489,7 +699,6 @@ function applyArcadeOutline(data, w, h, hexColor) {
     for (let x = 0; x < w; x++) {
       const idx = (y * w + x) * 4;
       if (data[idx + 3] <= 64) {
-        // Transparent pixel adjacent to solid pixel -> become outline!
         if (isSolid(x + 1, y) || isSolid(x - 1, y) || isSolid(x, y + 1) || isSolid(x, y - 1)) {
           toOutline.push(idx);
         }
@@ -503,8 +712,20 @@ function applyArcadeOutline(data, w, h, hexColor) {
     data[idx + 2] = outlineRGB[2];
     data[idx + 3] = 255;
   });
+  ctx.putImageData(imgData, 0, 0);
 }
 
+// HARD ALPHA CLAMP
+function clampAlpha(ctx, w, h) {
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i + 3] = data[i + 3] > 64 ? 255 : 0;
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// COLOR UTILS
 function hexToRgb(hex) {
   const clean = hex.replace('#', '');
   return [
@@ -514,11 +735,23 @@ function hexToRgb(hex) {
   ];
 }
 
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map(x => {
+    const hex = Math.max(0, Math.min(255, Math.round(x))).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+}
+
+// K-MEANS COLOR QUANTIZATION
 function runKMeans(pixels, k, iterations) {
   const actualK = Math.min(k, pixels.length);
+  if (actualK <= 0) return [];
+
+  // Deterministic centroid spread
   const centroids = [];
+  const step = Math.max(1, Math.floor(pixels.length / actualK));
   for (let i = 0; i < actualK; i++) {
-    centroids.push(pixels[Math.floor(Math.random() * pixels.length)].slice());
+    centroids.push(pixels[(i * step) % pixels.length].slice());
   }
 
   for (let it = 0; it < iterations; it++) {
