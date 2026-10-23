@@ -12,10 +12,14 @@ PixelBlasphemy provides a battle-tested pipeline to take high-resolution AI conc
 - 🚫 **No More AI Mixels**: Eliminates sub-pixel blur, inconsistent pixel scales, and muddy color bleeds.
 - 📐 **Arbitrary Dimension Support**: Retains your image's exact dimensions and aspect ratio (no power-of-two enforcement).
 - ⚡ **Downscale Selector (`/2`, `/4`, `/8`, `/16`, `1x`)**: Instant one-click integer downsampling before snapping.
-- ✂️ **Interactive Crop Tool**: Crop any sub-region of your concept art directly in the browser.
+- 🔬 **Tezumie Dither Engine (WebGL)**: Integrated shader pipeline with Floyd–Steinberg, Atkinson, Bayer 4×4/8×8, Blue Noise, and Sierra algorithms.
+- 🛡️ **Outline Preservation Weighting**: Prevents thin 1-pixel dark outlines from being eaten by bright background pixels.
+- 🎯 **Auto 1-px Arcade Outline**: Generate crisp retro sprite borders with a custom color picker.
+- 🔍 **Interactive Zoom (25% – 800%)**: Smooth pixelated zooming with a quick `1:1 NATIVE` reset button.
+- 🎛️ **Bi-directional Precision Controls**: Every slider is synced with a number box for typing exact numeric values.
 - 👁️ **Non-Destructive Live Preview**: Split comparison slider (Original vs Snapped) updates in real-time without modifying your base file.
 - 💾 **Smart Export Naming**: Automatically downloads with `[filename]_sn[sizeX].png` (e.g., `hazard_door_sn64.png`).
-- ✕ **One-Click Image Eject / Close**: Easily eject the current image and drop a new one without unwanted file dialogs.
+- ✕ **One-Click Image Eject**: Easily eject the current image and drop a new one without unwanted file dialogs.
 - 🚀 **`npx serve` Ready**: Run with `npm run dev` or `npx serve app -l 8080`.
 
 ---
@@ -60,5 +64,6 @@ C:\ConfyUI\python_embeded\python.exe tools\pixel_snapper.py raw_doors/ snapped_d
 
 ## ⚖️ Credits & Licensing
 - Pixel Snapper Core Engine © 2025 Hugo Duprez (`Hugo-Dz/spritefusion-pixel-snapper`, MIT License).
+- Image-to-Pixel WebGL Engine © 2025 Tezumie (`Tezumie/Image-to-Pixel`, MIT License).
 - ComfyUI Node Port © 2025 `x0x0b` (MIT License).
 - PixelBlasphemy Studio & Pipelines developed for *Streets of Regex*.
