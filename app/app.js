@@ -1,4 +1,4 @@
-﻿// PixelForge Studio v1.1 - Non-Destructive Live Preview Engine
+﻿// PixelForge Studio v1.2 - Live Non-Destructive Preview with Zoom & Grid Toggle
 
 const PALETTES = {
   auto: null,
@@ -32,13 +32,12 @@ const PALETTES = {
 
 // State
 let loadedFilename = "image.png";
-let rawImageElement = null;       // Fresh loaded file image
-let activeWorkingCanvas = null;    // Can be cropped version of raw image
-let currentSnappedCanvas = null;   // Downscaled & snapped preview canvas
+let rawImageElement = null;
+let currentSnappedCanvas = null;
 let currentDivisor = 8;
 let splitPosition = 0.5;
-let isCropping = false;
-let cropRect = { x: 0, y: 0, w: 100, h: 100 };
+let zoomPercent = 100;
+let showGrid = true;
 let batchFiles = [];
 
 // DOM Elements
@@ -46,9 +45,10 @@ const dropZone = document.getElementById('dropZone');
 const dropPrompt = document.getElementById('dropPrompt');
 const fileInput = document.getElementById('fileInput');
 const canvasWrapper = document.getElementById('canvasWrapper');
+const viewportScroller = document.getElementById('viewportScroller');
+const canvasScaler = document.getElementById('canvasScaler');
 const mainCanvas = document.getElementById('mainCanvas');
 const splitBar = document.getElementById('splitBar');
-const cropOverlay = document.getElementById('cropOverlay');
 const ctx = mainCanvas.getContext('2d');
 
 const viewerToolbar = document.getElementById('viewerToolbar');
@@ -58,11 +58,15 @@ const btnCloseImage = document.getElementById('btnCloseImage');
 const btnBrowseNew = document.getElementById('btnBrowseNew');
 const quickLoadGroup = document.getElementById('quickLoadGroup');
 
-const btnToggleCrop = document.getElementById('btnToggleCrop');
-const cropControls = document.getElementById('cropControls');
-const btnApplyCrop = document.getElementById('btnApplyCrop');
-const btnCancelCrop = document.getElementById('btnCancelCrop');
+// Zoom & Grid controls
+const zoomSlider = document.getElementById('zoomSlider');
+const zoomValueText = document.getElementById('zoomValueText');
+const btnZoomIn = document.getElementById('btnZoomIn');
+const btnZoomOut = document.getElementById('btnZoomOut');
+const btnResetZoom = document.getElementById('btnResetZoom');
+const btnToggleGrid = document.getElementById('btnToggleGrid');
 
+// Scale & Palette
 const scaleGroup = document.getElementById('scaleGroup');
 const targetDimText = document.getElementById('targetDimText');
 const colorCount = document.getElementById('colorCount');
@@ -70,12 +74,13 @@ const colorCountVal = document.getElementById('colorCountVal');
 const paletteSelect = document.getElementById('paletteSelect');
 const palettePreview = document.getElementById('palettePreview');
 
+// Download & Stats
 const btnDownload = document.getElementById('btnDownload');
 const downloadNameLabel = document.getElementById('downloadNameLabel');
-
 const origRes = document.getElementById('origRes');
 const snappedRes = document.getElementById('snappedRes');
 const activeColors = document.getElementById('activeColors');
+const statsZoom = document.getElementById('statsZoom');
 const splitPercent = document.getElementById('splitPercent');
 
 // TABS
@@ -124,10 +129,64 @@ colorCount.addEventListener('input', () => {
   updatePreview();
 });
 
-document.getElementById('renderGridLines').addEventListener('change', renderSplitView);
 document.getElementById('snapAlpha').addEventListener('change', updatePreview);
 
-// FILE INPUT (TRIGGERED ONLY BY PROMPT OR LOAD BUTTON, NOT BY CANVAS CLICK!)
+// ZOOM CONTROLS
+function setZoom(val) {
+  zoomPercent = Math.max(25, Math.min(800, val));
+  zoomSlider.value = zoomPercent;
+  zoomValueText.textContent = `${zoomPercent}%`;
+  statsZoom.textContent = `${zoomPercent}%`;
+  applyZoomToCanvas();
+}
+
+zoomSlider.addEventListener('input', () => {
+  setZoom(parseInt(zoomSlider.value) || 100);
+});
+
+btnZoomIn.addEventListener('click', () => {
+  setZoom(zoomPercent + 25);
+});
+
+btnZoomOut.addEventListener('click', () => {
+  setZoom(zoomPercent - 25);
+});
+
+btnResetZoom.addEventListener('click', () => {
+  setZoom(100); // 100% Native 1:1 scale
+});
+
+function applyZoomToCanvas() {
+  if (!rawImageElement) return;
+  const baseW = rawImageElement.naturalWidth || rawImageElement.width;
+  const baseH = rawImageElement.naturalHeight || rawImageElement.height;
+
+  const currentW = Math.round(baseW * (zoomPercent / 100));
+  const currentH = Math.round(baseH * (zoomPercent / 100));
+
+  mainCanvas.style.width = `${currentW}px`;
+  mainCanvas.style.height = `${currentH}px`;
+
+  // Position split bar correctly
+  const splitPx = Math.round(currentW * splitPosition);
+  splitBar.style.left = `${splitPx}px`;
+  splitBar.style.height = `${currentH}px`;
+}
+
+// GRID TOGGLE
+btnToggleGrid.addEventListener('click', () => {
+  showGrid = !showGrid;
+  if (showGrid) {
+    btnToggleGrid.classList.add('btn-grid-active');
+    btnToggleGrid.innerHTML = '&#9638; GRID: ON';
+  } else {
+    btnToggleGrid.classList.remove('btn-grid-active');
+    btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
+  }
+  renderSplitView();
+});
+
+// FILE INPUT (TRIGGERED ONLY BY PROMPT OR LOAD BUTTON, NEVER CANVAS)
 dropPrompt.addEventListener('click', (e) => {
   e.stopPropagation();
   fileInput.click();
@@ -184,29 +243,29 @@ function loadImage(file) {
     const img = new Image();
     img.onload = () => {
       rawImageElement = img;
-      
-      // Initialize active working canvas with exact original dimensions
-      activeWorkingCanvas = document.createElement('canvas');
-      activeWorkingCanvas.width = img.naturalWidth || img.width;
-      activeWorkingCanvas.height = img.naturalHeight || img.height;
-      const wCtx = activeWorkingCanvas.getContext('2d');
-      wCtx.drawImage(img, 0, 0);
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
 
       // UI updates
       loadedFilenameEl.textContent = loadedFilename;
-      origDimBadge.textContent = `${activeWorkingCanvas.width}x${activeWorkingCanvas.height} px`;
+      origDimBadge.textContent = `${w}x${h} px`;
       
       dropPrompt.style.display = 'none';
       viewerToolbar.style.display = 'flex';
       quickLoadGroup.style.display = 'block';
       canvasWrapper.style.display = 'flex';
 
-      // Auto-choose sensible divisor if image is large
-      const maxDim = Math.max(activeWorkingCanvas.width, activeWorkingCanvas.height);
+      // Auto divisor based on dimension
+      const maxDim = Math.max(w, h);
       if (maxDim >= 1024) selectDivisor(16);
       else if (maxDim >= 512) selectDivisor(8);
       else if (maxDim >= 256) selectDivisor(4);
       else selectDivisor(1);
+
+      // Auto initial zoom: if image is small (<256px), zoom in to 200% or 400%
+      if (maxDim <= 128) setZoom(400);
+      else if (maxDim <= 256) setZoom(200);
+      else setZoom(100);
 
       updateDimensionsUI();
       updatePreview();
@@ -224,9 +283,9 @@ function selectDivisor(d) {
 }
 
 function updateDimensionsUI() {
-  if (!activeWorkingCanvas) return;
-  const w = activeWorkingCanvas.width;
-  const h = activeWorkingCanvas.height;
+  if (!rawImageElement) return;
+  const w = rawImageElement.naturalWidth || rawImageElement.width;
+  const h = rawImageElement.naturalHeight || rawImageElement.height;
   const targetW = Math.max(1, Math.round(w / currentDivisor));
   const targetH = Math.max(1, Math.round(h / currentDivisor));
 
@@ -234,7 +293,7 @@ function updateDimensionsUI() {
   targetDimText.textContent = `${targetW} × ${targetH} px (/${currentDivisor})`;
   snappedRes.textContent = `${targetW}x${targetH}`;
 
-  // Update download button label with target filename: [name]_sn[sizeX].png
+  // Update download button label: [name]_sn[sizeX].png
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
   const downloadName = `${baseName}_sn${targetW}.png`;
   downloadNameLabel.textContent = `(${downloadName})`;
@@ -244,13 +303,7 @@ function updateDimensionsUI() {
 // CLOSE / EJECT IMAGE
 btnCloseImage.addEventListener('click', () => {
   rawImageElement = null;
-  activeWorkingCanvas = null;
   currentSnappedCanvas = null;
-  isCropping = false;
-
-  cropOverlay.style.display = 'none';
-  cropControls.style.display = 'none';
-  btnToggleCrop.style.display = 'inline-block';
 
   viewerToolbar.style.display = 'none';
   quickLoadGroup.style.display = 'none';
@@ -267,102 +320,29 @@ btnCloseImage.addEventListener('click', () => {
   fileInput.value = '';
 });
 
-// CROP TOOL
-btnToggleCrop.addEventListener('click', () => {
-  if (!activeWorkingCanvas) return;
-  isCropping = true;
-  btnToggleCrop.style.display = 'none';
-  cropControls.style.display = 'flex';
-  splitBar.style.display = 'none';
-
-  // Initialize crop rect to center square (e.g. 70% of smaller dimension)
-  const w = activeWorkingCanvas.width;
-  const h = activeWorkingCanvas.height;
-  const size = Math.round(Math.min(w, h) * 0.75);
-  cropRect = {
-    x: Math.round((w - size) / 2),
-    y: Math.round((h - size) / 2),
-    w: size,
-    h: size
-  };
-
-  renderCropOverlay();
-});
-
-btnCancelCrop.addEventListener('click', () => {
-  isCropping = false;
-  cropOverlay.style.display = 'none';
-  cropControls.style.display = 'none';
-  btnToggleCrop.style.display = 'inline-block';
-  splitBar.style.display = 'block';
-  renderSplitView();
-});
-
-btnApplyCrop.addEventListener('click', () => {
-  if (!activeWorkingCanvas) return;
-  
-  // Extract cropped sub-image
-  const cropped = document.createElement('canvas');
-  cropped.width = cropRect.w;
-  cropped.height = cropRect.h;
-  const cCtx = cropped.getContext('2d');
-  cCtx.drawImage(
-    activeWorkingCanvas,
-    cropRect.x, cropRect.y, cropRect.w, cropRect.h,
-    0, 0, cropRect.w, cropRect.h
-  );
-
-  activeWorkingCanvas = cropped;
-  origDimBadge.textContent = `${cropped.width}x${cropped.height} px`;
-
-  isCropping = false;
-  cropOverlay.style.display = 'none';
-  cropControls.style.display = 'none';
-  btnToggleCrop.style.display = 'inline-block';
-  splitBar.style.display = 'block';
-
-  updateDimensionsUI();
-  updatePreview();
-});
-
-function renderCropOverlay() {
-  if (!isCropping) return;
-  cropOverlay.style.display = 'block';
-
-  // Map image coordinates to canvas on screen
-  const rect = mainCanvas.getBoundingClientRect();
-  const scaleX = rect.width / activeWorkingCanvas.width;
-  const scaleY = rect.height / activeWorkingCanvas.height;
-
-  cropOverlay.style.left = `${mainCanvas.offsetLeft + cropRect.x * scaleX}px`;
-  cropOverlay.style.top = `${mainCanvas.offsetTop + cropRect.y * scaleY}px`;
-  cropOverlay.style.width = `${cropRect.w * scaleX}px`;
-  cropOverlay.style.height = `${cropRect.h * scaleY}px`;
-}
-
 // NON-DESTRUCTIVE LIVE PREVIEW COMPUTATION
 function updatePreview() {
-  if (!activeWorkingCanvas) return;
+  if (!rawImageElement) return;
 
-  const w = activeWorkingCanvas.width;
-  const h = activeWorkingCanvas.height;
+  const w = rawImageElement.naturalWidth || rawImageElement.width;
+  const h = rawImageElement.naturalHeight || rawImageElement.height;
   const targetW = Math.max(1, Math.round(w / currentDivisor));
   const targetH = Math.max(1, Math.round(h / currentDivisor));
   const kColors = parseInt(colorCount.value) || 16;
   const selectedPalette = PALETTES[paletteSelect.value];
 
-  // Create offscreen canvas for downsampled target
+  // Downsample to target grid
   const offCanvas = document.createElement('canvas');
   offCanvas.width = targetW;
   offCanvas.height = targetH;
   const offCtx = offCanvas.getContext('2d');
   offCtx.imageSmoothingEnabled = false;
-  offCtx.drawImage(activeWorkingCanvas, 0, 0, targetW, targetH);
+  offCtx.drawImage(rawImageElement, 0, 0, targetW, targetH);
 
   const imgData = offCtx.getImageData(0, 0, targetW, targetH);
   const data = imgData.data;
 
-  // Collect pixels for K-Means
+  // Pixels for K-Means
   const pixels = [];
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] > 64) {
@@ -461,71 +441,67 @@ function colorDistSq(c1, c2) {
 
 // RENDER SPLIT COMPARISON VIEW
 function renderSplitView() {
-  if (!activeWorkingCanvas || !currentSnappedCanvas) return;
+  if (!rawImageElement || !currentSnappedCanvas) return;
 
-  const displayW = 512;
-  const aspect = activeWorkingCanvas.height / activeWorkingCanvas.width;
-  const displayH = Math.round(displayW * aspect);
+  const w = rawImageElement.naturalWidth || rawImageElement.width;
+  const h = rawImageElement.naturalHeight || rawImageElement.height;
 
-  mainCanvas.width = displayW;
-  mainCanvas.height = displayH;
+  // Render canvas at native internal resolution
+  mainCanvas.width = w;
+  mainCanvas.height = h;
 
-  const splitX = Math.round(displayW * splitPosition);
-  splitBar.style.left = `${mainCanvas.offsetLeft + splitX}px`;
-  splitBar.style.top = `${mainCanvas.offsetTop}px`;
-  splitBar.style.height = `${displayH}px`;
+  applyZoomToCanvas();
+
+  const splitX = Math.round(w * splitPosition);
   splitPercent.textContent = `${Math.round(splitPosition * 100)}%`;
 
-  ctx.clearRect(0, 0, displayW, displayH);
+  ctx.clearRect(0, 0, w, h);
 
-  // Left Side: Original
+  // Left Side: Original Image
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, splitX, displayH);
+  ctx.rect(0, 0, splitX, h);
   ctx.clip();
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(activeWorkingCanvas, 0, 0, displayW, displayH);
+  ctx.drawImage(rawImageElement, 0, 0, w, h);
   ctx.restore();
 
   // Right Side: Snapped scaled up with nearest neighbor
   ctx.save();
   ctx.beginPath();
-  ctx.rect(splitX, 0, displayW - splitX, displayH);
+  ctx.rect(splitX, 0, w - splitX, h);
   ctx.clip();
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(currentSnappedCanvas, 0, 0, displayW, displayH);
+  ctx.drawImage(currentSnappedCanvas, 0, 0, w, h);
 
   // Pixel Grid Lines (on snapped side)
-  if (document.getElementById('renderGridLines').checked) {
+  if (showGrid) {
     const targetW = currentSnappedCanvas.width;
     const targetH = currentSnappedCanvas.height;
-    const stepX = displayW / targetW;
-    const stepY = displayH / targetH;
+    const stepX = w / targetW;
+    const stepY = h / targetH;
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-    ctx.lineWidth = 1;
-    for (let x = splitX; x < displayW; x += stepX) {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.lineWidth = Math.max(1, w / 512); // visible line
+    for (let x = splitX; x < w; x += stepX) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, displayH);
+      ctx.lineTo(x, h);
       ctx.stroke();
     }
-    for (let y = 0; y < displayH; y += stepY) {
+    for (let y = 0; y < h; y += stepY) {
       ctx.beginPath();
       ctx.moveTo(splitX, y);
-      ctx.lineTo(displayW, y);
+      ctx.lineTo(w, y);
       ctx.stroke();
     }
   }
   ctx.restore();
-
-  if (isCropping) renderCropOverlay();
 }
 
-// SPLIT BAR DRAGGING (INTERACTIVE)
+// SPLIT BAR DRAGGING (INTERACTIVE & ZOOM AWARE)
 let isDraggingSplit = false;
-canvasWrapper.addEventListener('mousedown', (e) => {
-  if (isCropping) return;
+canvasScaler.addEventListener('mousedown', (e) => {
   isDraggingSplit = true;
   updateSplitFromMouse(e);
 });
@@ -549,7 +525,7 @@ function updateSplitFromMouse(e) {
 
 // DOWNLOAD FINAL ASSET: [filename]_sn[sizeX].png
 btnDownload.addEventListener('click', () => {
-  if (!currentSnappedCanvas || !activeWorkingCanvas) return;
+  if (!currentSnappedCanvas || !rawImageElement) return;
 
   const targetW = currentSnappedCanvas.width;
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");

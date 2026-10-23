@@ -77,9 +77,8 @@
             <div class="palette-preview" id="palettePreview"></div>
           </div>
 
-          <!-- GRID & ALPHA TOGGLES -->
+          <!-- ALPHA TOGGLE -->
           <div class="control-group checkbox-group">
-            <label><input type="checkbox" id="renderGridLines" checked> Show Pixel Grid Overlay</label>
             <label><input type="checkbox" id="snapAlpha" checked> Clean Alpha Mask (Hard Binary)</label>
           </div>
 
@@ -104,7 +103,7 @@
 
         <!-- RIGHT: VIEWER & WORKSPACE -->
         <section class="panel viewer-panel">
-          <!-- TOP WORKSPACE TOOLBAR (VISIBLE WHEN IMAGE LOADED) -->
+          <!-- TOP WORKSPACE TOOLBAR -->
           <div class="viewer-toolbar" id="viewerToolbar" style="display:none;">
             <div class="file-info-badge">
               <span id="loadedFilename">image.png</span>
@@ -112,12 +111,20 @@
             </div>
             
             <div class="toolbar-actions">
-              <button class="btn-tool" id="btnToggleCrop">&#9986; CROP REGION</button>
-              <div class="crop-controls" id="cropControls" style="display:none;">
-                <button class="btn-tool btn-tool-success" id="btnApplyCrop">&#10003; APPLY</button>
-                <button class="btn-tool btn-tool-danger" id="btnCancelCrop">&#10005; CANCEL</button>
+              <!-- ZOOM CONTROLS -->
+              <div class="zoom-controls">
+                <button class="btn-tool btn-zoom" id="btnZoomOut" title="Zoom Out">-</button>
+                <input type="range" id="zoomSlider" min="25" max="800" step="25" value="100" class="zoom-slider" title="Zoom Slider">
+                <button class="btn-tool btn-zoom" id="btnZoomIn" title="Zoom In">+</button>
+                <span class="zoom-text" id="zoomValueText">100%</span>
+                <button class="btn-tool" id="btnResetZoom" title="Reset Zoom to Native 1:1 Scale">1:1 NATIVE</button>
               </div>
-              <button class="btn-tool btn-tool-danger" id="btnCloseImage" title="Close / Eject Image">&#10005; EJECT IMAGE</button>
+
+              <!-- GRID TOGGLE BUTTON -->
+              <button class="btn-tool btn-grid-active" id="btnToggleGrid">&#9638; GRID: ON</button>
+
+              <!-- EJECT BUTTON -->
+              <button class="btn-tool btn-tool-danger" id="btnCloseImage" title="Close / Eject Image">&#10005; EJECT</button>
             </div>
           </div>
 
@@ -131,19 +138,15 @@
             </div>
 
             <div class="canvas-wrapper" id="canvasWrapper" style="display:none;">
-              <canvas id="mainCanvas"></canvas>
-              
-              <!-- INTERACTIVE SPLIT SLIDER BAR -->
-              <div class="split-slider-bar" id="splitBar">
-                <div class="slider-handle">&#8596;</div>
-              </div>
-
-              <!-- CROP OVERLAY BOX -->
-              <div class="crop-overlay-box" id="cropOverlay" style="display:none;">
-                <div class="crop-handle nw"></div>
-                <div class="crop-handle ne"></div>
-                <div class="crop-handle sw"></div>
-                <div class="crop-handle se"></div>
+              <div class="viewport-scroller" id="viewportScroller">
+                <div class="canvas-scaler" id="canvasScaler">
+                  <canvas id="mainCanvas"></canvas>
+                  
+                  <!-- INTERACTIVE SPLIT SLIDER BAR -->
+                  <div class="split-slider-bar" id="splitBar">
+                    <div class="slider-handle">&#8596;</div>
+                  </div>
+                </div>
               </div>
 
               <!-- STATS OVERLAY BAR -->
@@ -151,6 +154,7 @@
                 <span>Original: <b id="origRes">-</b></span>
                 <span>Target: <b id="snappedRes">-</b></span>
                 <span>Colors: <b id="activeColors">-</b></span>
+                <span>Zoom: <b id="statsZoom">100%</b></span>
                 <span>Split: <b id="splitPercent">50%</b></span>
               </div>
             </div>
