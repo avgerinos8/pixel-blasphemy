@@ -211,6 +211,7 @@ scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
 
 function selectDivisor(d) {
   currentDivisor = d;
+  btnResetZoom.title = `Reset to Native 1:1 Scale (1/${d} = ${Math.round(100/d)}%)`;
   scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
     btn.classList.toggle('active', parseInt(btn.dataset.divisor) === d);
   });
@@ -415,7 +416,7 @@ updatePalettePreview();
 
 // ZOOM CONTROLS (FIT, NATIVE 1:1, SLIDER & NUM BOX)
 function setZoom(val) {
-  zoomPercent = Math.max(25, Math.min(800, Math.round(val)));
+  zoomPercent = Math.max(5, Math.min(1000, Math.round(val)));
   zoomSlider.value = zoomPercent;
   zoomNumInput.value = zoomPercent;
   statsZoom.textContent = `${zoomPercent}%`;
@@ -440,7 +441,11 @@ zoomNumInput.addEventListener('input', () => setZoom(parseInt(zoomNumInput.value
 btnZoomIn.addEventListener('click', () => setZoom(zoomPercent + 25));
 btnZoomOut.addEventListener('click', () => setZoom(zoomPercent - 25));
 btnFitZoom.addEventListener('click', () => fitZoomToContainer());
-btnResetZoom.addEventListener('click', () => setZoom(100));
+function resetToNativeScale() {
+  const nativeZoom = Math.max(5, Math.round(100 / currentDivisor));
+  setZoom(nativeZoom);
+}
+btnResetZoom.addEventListener('click', () => resetToNativeScale());
 
 window.addEventListener('resize', () => {
   applyZoomToCanvas();
@@ -1046,4 +1051,90 @@ document.querySelectorAll('.btn-step').forEach(btn => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
+});
+
+
+// MOUSE WHEEL ZOOM OVER VIEWPORT (CENTERED ON CURSOR)
+viewportScroller.addEventListener('wheel', (e) => {
+  if (!rawImageElement) return;
+  e.preventDefault();
+
+  const delta = e.deltaY < 0 ? 15 : -15;
+  const rect = viewportScroller.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+
+  const prevW = mainCanvas.clientWidth;
+  const prevH = mainCanvas.clientHeight;
+  const prevScrollX = viewportScroller.scrollLeft;
+  const prevScrollY = viewportScroller.scrollTop;
+
+  const oldZoom = zoomPercent;
+  const newZoom = Math.max(5, Math.min(1000, oldZoom + delta));
+  if (newZoom === oldZoom) return;
+
+  setZoom(newZoom);
+
+  const newW = mainCanvas.clientWidth;
+  const newH = mainCanvas.clientHeight;
+  if (prevW > 0 && prevH > 0) {
+    viewportScroller.scrollLeft = (prevScrollX + mouseX) * (newW / prevW) - mouseX;
+    viewportScroller.scrollTop = (prevScrollY + mouseY) * (newH / prevH) - mouseY;
+  }
+}, { passive: false });
+
+// MIDDLE CLICK HOLD + DRAG PAN
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let scrollStartX = 0;
+let scrollStartY = 0;
+
+viewportScroller.addEventListener('mousedown', (e) => {
+  if (e.button === 1) { // Middle click button
+    e.preventDefault();
+    isPanning = true;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    scrollStartX = viewportScroller.scrollLeft;
+    scrollStartY = viewportScroller.scrollTop;
+    viewportScroller.style.cursor = 'grabbing';
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (isPanning) {
+    e.preventDefault();
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    viewportScroller.scrollLeft = scrollStartX - dx;
+    viewportScroller.scrollTop = scrollStartY - dy;
+  }
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 1 && isPanning) {
+    isPanning = false;
+    viewportScroller.style.cursor = '';
+  }
+});
+
+viewportScroller.addEventListener('auxclick', (e) => {
+  if (e.button === 1) e.preventDefault();
+});
+
+// CTRL+ / CTRL- / CTRL+0 KEYBOARD ZOOM OVERRIDE
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd') {
+      e.preventDefault();
+      if (rawImageElement) setZoom(zoomPercent + 25);
+    } else if (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract') {
+      e.preventDefault();
+      if (rawImageElement) setZoom(zoomPercent - 25);
+    } else if (e.key === '0' || e.code === 'Numpad0') {
+      e.preventDefault();
+      if (rawImageElement) resetToNativeScale();
+    }
+  }
 });
