@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PixelBlasphemy Studio - Free Local Pixel Snapper & AI Pipeline</title>
+  <title>PixelBlasphemy Studio - Pro AI Pixel Art & Snapper Pipeline</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,183 +13,202 @@
 </head>
 <body>
   <div class="app-container">
-    <header class="app-header">
-      <div class="logo">
-        <span class="logo-icon">&#9632;</span>
-        <h1>PIXEL<span>BLASPHEMY</span> <small>STUDIO [FREE LOCAL EDITION]</small></h1>
-      </div>
-      <div class="header-badges">
-        <span class="badge badge-accent">npx serve READY</span>
-        <span class="badge">TEZUMIE LOADED</span>
-        <span class="badge badge-neon">PALETTE EXTRACTOR</span>
-      </div>
-    </header>
-
+    <!-- TOP SLIM NAVIGATION & INTEGRATED LOGO -->
     <nav class="app-tabs">
-      <button class="tab-btn active" data-tab="tab-snapper">Pixel Snapper Studio</button>
-      <button class="tab-btn" data-tab="tab-prompt">Nano-Banana Prompt Lab</button>
-      <button class="tab-btn" data-tab="tab-comfy">ComfyUI Dual Pipeline Guide</button>
+      <div class="tab-logo">
+        <span class="logo-icon">&#9632;</span>
+        <span class="logo-title">PIXEL<span>BLASPHEMY</span></span>
+        <span class="logo-badge">STUDIO</span>
+      </div>
+      <div class="tabs-group">
+        <button class="tab-btn active" data-tab="tab-snapper">Pixel Snapper Studio</button>
+        <button class="tab-btn" data-tab="tab-prompt">Nano-Banana Prompt Lab</button>
+        <button class="tab-btn" data-tab="tab-comfy">ComfyUI Pro Configurations</button>
+      </div>
     </nav>
 
     <!-- TAB 1: PIXEL SNAPPER STUDIO -->
     <main class="tab-content active" id="tab-snapper">
       <div class="workbench">
-        <!-- LEFT: CONTROLS PANEL (100% NO-SCROLL VIEWPORT) -->
+        <!-- LEFT: EXPANDED 2-COLUMN CONTROLS PANEL -->
         <aside class="panel controls-panel">
-          <div class="panel-header">
-            <h2>PROCESSING CONTROLS</h2>
+          <!-- TOP PERMANENT ACTION BAR (OPEN MAIN + OPEN PALETTE + MASTER RESET) -->
+          <div class="panel-top-bar">
+            <button class="btn btn-primary btn-open-main" id="btnOpenMainImage">
+              &#128194; OPEN MAIN IMAGE
+            </button>
+            <button class="btn btn-secondary btn-open-palette" id="btnOpenPaletteImage">
+              &#127912; OPEN IMAGE FOR PALETTE
+            </button>
+            <button class="btn btn-danger btn-reset-master" id="btnResetAll" title="Reset all processing options to default settings">
+              &#8634; RESET ALL
+            </button>
           </div>
 
-          <!-- LOAD BUTTON IF IMAGE ALREADY LOADED -->
-          <div class="control-group" id="quickLoadGroup" style="display:none;">
-            <button class="btn btn-secondary w-full" id="btnBrowseNew">&#128194; LOAD DIFFERENT IMAGE</button>
-          </div>
+          <!-- HIDDEN FILE INPUTS (TRIGGERED BY BUTTONS OR DRAG-DROP) -->
+          <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
+          <input type="file" id="paletteFileInput" accept="image/*" style="display:none;">
 
-          <!-- SCALE DOWNSAMPLE BUTTONS -->
-          <div class="control-group">
-            <div class="label-row">
-              <label>DOWNSCALE FACTOR:</label>
-              <span class="dim-badge" id="targetDimText">Waiting...</span>
-            </div>
-            <div class="scale-btn-group" id="scaleGroup">
-              <button class="scale-btn" data-divisor="1">1x</button>
-              <button class="scale-btn" data-divisor="2">/2</button>
-              <button class="scale-btn" data-divisor="4">/4</button>
-              <button class="scale-btn active" data-divisor="8">/8</button>
-              <button class="scale-btn" data-divisor="16">/16</button>
-            </div>
-          </div>
-
-          <!-- 2-COLUMN SLIDERS: OUTLINE WEIGHT & EDGE SENSITIVITY -->
-          <div class="controls-grid">
-            <div class="control-group synced-field">
-              <div class="label-row">
-                <label for="outlineWeight">OUTLINE WT:</label>
-                <input type="number" id="outlineWeightNum" min="1.0" max="4.0" step="0.1" value="1.5" class="num-box">
+          <!-- 2 COLUMNS OF CONTROLS -->
+          <div class="controls-columns">
+            <!-- SUB-COLUMN 1: GEOMETRY, OUTLINES & ALPHA -->
+            <div class="controls-col">
+              <!-- DOWNSCALE FACTOR -->
+              <div class="control-box">
+                <div class="label-row">
+                  <label>DOWNSCALE:</label>
+                  <span class="dim-badge" id="targetDimText">Waiting...</span>
+                  <button type="button" class="btn-reset-param" data-param="divisor" title="Reset Downscale to /8">&#8634;</button>
+                </div>
+                <div class="scale-btn-group" id="scaleGroup">
+                  <button class="scale-btn" data-divisor="1">1x</button>
+                  <button class="scale-btn" data-divisor="2">/2</button>
+                  <button class="scale-btn" data-divisor="4">/4</button>
+                  <button class="scale-btn active" data-divisor="8">/8</button>
+                  <button class="scale-btn" data-divisor="16">/16</button>
+                </div>
               </div>
-              <input type="range" id="outlineWeight" min="1.0" max="4.0" step="0.1" value="1.5">
-              <div class="ticks"><span>1.0</span><span>2.0</span><span>4.0</span></div>
-            </div>
 
-            <div class="control-group synced-field">
-              <div class="label-row">
-                <label for="edgeSensitivity">EDGE SNAP:</label>
-                <input type="number" id="edgeSensitivityNum" min="0.1" max="1.0" step="0.05" value="0.5" class="num-box">
+              <!-- OUTLINE PRESERVATION WEIGHT -->
+              <div class="control-box synced-field">
+                <div class="label-row">
+                  <label for="outlineWeight">OUTLINE WEIGHT:</label>
+                  <button type="button" class="btn-reset-param" data-param="outlineWeight" title="Reset to 1.5x">&#8634;</button>
+                  <input type="number" id="outlineWeightNum" min="1.0" max="4.0" step="0.1" value="1.5" class="num-box">
+                </div>
+                <input type="range" id="outlineWeight" min="1.0" max="4.0" step="0.1" value="1.5">
+                <div class="ticks"><span>1.0x (Standard)</span><span>2.0x</span><span>4.0x (Max)</span></div>
               </div>
-              <input type="range" id="edgeSensitivity" min="0.1" max="1.0" step="0.05" value="0.5">
-              <div class="ticks"><span>0.1</span><span>0.5</span><span>1.0</span></div>
-            </div>
-          </div>
 
-          <!-- CHECKBOXES ROW: AUTO OUTLINE & HARD ALPHA -->
-          <div class="checkbox-row">
-            <label><input type="checkbox" id="autoOutlineToggle"> 1-PX OUTLINE</label>
-            <input type="color" id="autoOutlineColor" value="#000000" class="color-picker" title="Outline Color">
-            <label><input type="checkbox" id="snapAlpha" checked> HARD ALPHA</label>
-          </div>
+              <!-- EDGE SNAPPING SENSITIVITY -->
+              <div class="control-box synced-field">
+                <div class="label-row">
+                  <label for="edgeSensitivity">EDGE SNAP:</label>
+                  <button type="button" class="btn-reset-param" data-param="edgeSensitivity" title="Reset to 0.5">&#8634;</button>
+                  <input type="number" id="edgeSensitivityNum" min="0.1" max="1.0" step="0.05" value="0.5" class="num-box">
+                </div>
+                <input type="range" id="edgeSensitivity" min="0.1" max="1.0" step="0.05" value="0.5">
+                <div class="ticks"><span>0.1 (Strict)</span><span>0.5 (Balanced)</span><span>1.0 (Magnetic)</span></div>
+              </div>
 
-          <!-- TEZUMIE IMAGE-TO-PIXEL INTEGRATION -->
-          <div class="feature-box tezumie-box">
-            <div class="feature-header">
-              <label class="feature-title">
-                <input type="checkbox" id="tezumieToggle"> TEZUMIE DITHER ENGINE
-              </label>
-              <span class="badge-mini">WEBGL SHADER</span>
+              <!-- AUTO 1-PX ARCADE OUTLINE -->
+              <div class="control-box">
+                <div class="checkbox-row">
+                  <label><input type="checkbox" id="autoOutlineToggle"> 1-PX ARCADE OUTLINE</label>
+                  <input type="color" id="autoOutlineColor" value="#000000" class="color-picker" title="Outline Color">
+                  <button type="button" class="btn-reset-param" data-param="autoOutline" title="Reset to Off / #000000">&#8634;</button>
+                </div>
+              </div>
+
+              <!-- HARD ALPHA CLAMP -->
+              <div class="control-box">
+                <div class="checkbox-row">
+                  <label><input type="checkbox" id="snapAlpha" checked> HARD ALPHA (BINARY MASK)</label>
+                  <button type="button" class="btn-reset-param" data-param="snapAlpha" title="Reset to Checked">&#8634;</button>
+                </div>
+              </div>
+
+              <!-- DOWNLOAD PREVIEW BUTTON -->
+              <div class="action-box">
+                <button class="btn btn-primary btn-download" id="btnDownload" disabled>
+                  &#128190; DOWNLOAD ASSET <span id="downloadNameLabel"></span>
+                </button>
+              </div>
             </div>
-            
-            <div class="tezumie-options" id="tezumieOptions" style="display:none;">
-              <div class="tezumie-grid">
-                <div class="control-group">
-                  <label for="tezumieMethod">METHOD:</label>
+
+            <!-- SUB-COLUMN 2: PALETTE, TEZUMIE DITHER & BATCH -->
+            <div class="controls-col">
+              <!-- TEZUMIE DITHER ENGINE -->
+              <div class="control-box tezumie-box">
+                <div class="feature-header">
+                  <label class="feature-title">
+                    <input type="checkbox" id="tezumieToggle"> TEZUMIE DITHER
+                  </label>
+                  <span class="badge-mini">WEBGL SHADER</span>
+                  <button type="button" class="btn-reset-param" data-param="tezumie" title="Reset Tezumie to Off">&#8634;</button>
+                </div>
+
+                <div class="tezumie-options" id="tezumieOptions" style="display:none;">
+                  <div class="label-row" style="margin-top:4px;">
+                    <label for="tezumieMethod">METHOD:</label>
+                  </div>
                   <select id="tezumieMethod" class="compact-select">
-                    <option value="floyd-steinberg" selected>Floyd-Steinberg</option>
-                    <option value="atkinson">Atkinson</option>
-                    <option value="bayer4">Bayer 4x4</option>
-                    <option value="bayer8">Bayer 8x8</option>
-                    <option value="bluenoise">Blue Noise</option>
+                    <option value="floyd-steinberg" selected>Floyd-Steinberg (Diffusion)</option>
+                    <option value="atkinson">Atkinson (Vintage / Mac)</option>
+                    <option value="bayer4">Bayer 4x4 (Crosshatch)</option>
+                    <option value="bayer8">Bayer 8x8 (Ordered)</option>
+                    <option value="bluenoise">Blue Noise (Fine Grain)</option>
                     <option value="sierra-lite">Sierra Lite</option>
                     <option value="burkes">Burkes</option>
-                    <option value="none">None (Nearest)</option>
+                    <option value="none">None (Nearest Remap)</option>
                   </select>
-                </div>
-                <div class="control-group synced-field">
-                  <div class="label-row">
+
+                  <div class="label-row" style="margin-top:4px;">
                     <label for="tezumieStrength">STRENGTH:</label>
                     <input type="number" id="tezumieStrengthNum" min="0.0" max="1.0" step="0.05" value="0.75" class="num-box">
                   </div>
                   <input type="range" id="tezumieStrength" min="0.0" max="1.0" step="0.05" value="0.75">
                 </div>
               </div>
+
+              <!-- COLOR BUDGET (K-MEANS) -->
+              <div class="control-box synced-field">
+                <div class="label-row">
+                  <label for="colorCount">COLOR BUDGET:</label>
+                  <button type="button" class="btn-reset-param" data-param="colorCount" title="Reset to 16 Colors">&#8634;</button>
+                  <input type="number" id="colorCountNum" min="4" max="64" step="2" value="16" class="num-box">
+                </div>
+                <input type="range" id="colorCount" min="4" max="64" step="2" value="16">
+                <div class="ticks"><span>4</span><span>16</span><span>32</span><span>64</span></div>
+              </div>
+
+              <!-- K-MEANS ITERATIONS -->
+              <div class="control-box synced-field">
+                <div class="label-row">
+                  <label for="kmeansIter">K-MEANS ITER:</label>
+                  <button type="button" class="btn-reset-param" data-param="kmeansIter" title="Reset to 15 Iterations">&#8634;</button>
+                  <input type="number" id="kmeansIterNum" min="5" max="50" step="1" value="15" class="num-box">
+                </div>
+                <input type="range" id="kmeansIter" min="5" max="50" step="1" value="15">
+                <div class="ticks"><span>5 (Fast)</span><span>15 (Normal)</span><span>50 (High)</span></div>
+              </div>
+
+              <!-- PALETTE QUANTIZATION & REFERENCE BADGE -->
+              <div class="control-box palette-box">
+                <div class="label-row">
+                  <label for="paletteSelect">PALETTE SOURCE:</label>
+                  <button type="button" class="btn-reset-param" data-param="palette" title="Reset to Auto K-Means">&#8634;</button>
+                </div>
+                <select id="paletteSelect" class="compact-select">
+                  <option value="auto" selected>Auto K-Means (Active Image)</option>
+                  <option value="cyberpunk16">Streets of Regex Cyberpunk (16)</option>
+                  <option value="endesga32">Endesga 32 (Indie Standard)</option>
+                  <option value="db32">DawnBringer 32 (Dark Retro)</option>
+                  <option value="pico8">Pico-8 (16 Colors)</option>
+                  <option value="gameboy">Game Boy Classic (4 Shades)</option>
+                </select>
+
+                <!-- ACTIVE REFERENCE PALETTE BADGE -->
+                <div class="palette-ref-badge" id="paletteRefBadge" style="display:none;">
+                  <img id="paletteRefThumb" class="palette-ref-thumb" alt="Thumb">
+                  <span id="paletteRefName" class="palette-ref-filename">palette.png</span>
+                  <button type="button" class="btn-clear-palette" id="btnClearPaletteRef" title="Clear palette reference and revert to image colors">&#10005; CLEAR</button>
+                </div>
+
+                <!-- SWATCH PREVIEW BAR -->
+                <div class="palette-preview" id="palettePreview"></div>
+              </div>
+
+              <!-- BATCH QUEUE ACCORDION -->
+              <details class="batch-drawer" id="batchDrawer">
+                <summary class="batch-summary">&#128193; BATCH FILE QUEUE (<span id="batchCount">0</span>)</summary>
+                <ul class="batch-list" id="batchList">
+                  <li class="empty-hint">Drop multiple images here to batch process.</li>
+                </ul>
+                <button class="btn btn-accent w-full" id="btnProcessBatch" disabled>BATCH PROCESS ALL</button>
+              </details>
             </div>
           </div>
-
-          <!-- 2-COLUMN SLIDERS: K-MEANS COLOR BUDGET & ITERATIONS -->
-          <div class="controls-grid">
-            <div class="control-group synced-field">
-              <div class="label-row">
-                <label for="colorCount">COLOR BUDGET:</label>
-                <input type="number" id="colorCountNum" min="4" max="64" step="2" value="16" class="num-box">
-              </div>
-              <input type="range" id="colorCount" min="4" max="64" step="2" value="16">
-              <div class="ticks"><span>4</span><span>16</span><span>32</span><span>64</span></div>
-            </div>
-
-            <div class="control-group synced-field">
-              <div class="label-row">
-                <label for="kmeansIter">K-MEANS ITER:</label>
-                <input type="number" id="kmeansIterNum" min="5" max="50" step="1" value="15" class="num-box">
-              </div>
-              <input type="range" id="kmeansIter" min="5" max="50" step="1" value="15">
-              <div class="ticks"><span>5 (Fast)</span><span>15</span><span>50</span></div>
-            </div>
-          </div>
-
-          <!-- PALETTE SELECTOR & REFERENCE IMAGE UPLOAD -->
-          <div class="control-group palette-section">
-            <div class="label-row">
-              <label for="paletteSelect">PALETTE QUANTIZATION:</label>
-            </div>
-            <select id="paletteSelect" class="compact-select">
-              <option value="auto" selected>Auto K-Means (Extract from Image)</option>
-              <option value="cyberpunk16">Streets of Regex Cyberpunk (16)</option>
-              <option value="endesga32">Endesga 32 (Indie Standard)</option>
-              <option value="db32">DawnBringer 32 (Dark Retro)</option>
-              <option value="pico8">Pico-8 (16 Colors)</option>
-              <option value="gameboy">Game Boy Classic (4 Shades)</option>
-            </select>
-
-            <!-- REFERENCE IMAGE PALETTE UPLOADER -->
-            <div class="palette-ref-box">
-              <input type="file" id="paletteFileInput" accept="image/*" style="display:none;">
-              <div class="palette-ref-row" id="paletteRefRow">
-                <button type="button" class="btn-palette-upload" id="btnUploadPaletteRef">&#128247; UPLOAD PALETTE REFERENCE IMAGE</button>
-                <button type="button" class="btn-clear-palette" id="btnClearPaletteRef" style="display:none;" title="Revert to active image colors">&#10005; CLEAR</button>
-              </div>
-              <div class="palette-ref-badge" id="paletteRefBadge" style="display:none;">
-                <img id="paletteRefThumb" class="palette-ref-thumb" alt="Thumb">
-                <span id="paletteRefName" class="palette-ref-filename">palette.png</span>
-                <span class="badge-active-ref">K-MEANS SAMPLED</span>
-              </div>
-            </div>
-
-            <div class="palette-preview" id="palettePreview"></div>
-          </div>
-
-          <!-- DOWNLOAD ACTION -->
-          <div class="action-buttons">
-            <button class="btn btn-primary" id="btnDownload" disabled>
-              DOWNLOAD PREVIEW <span id="downloadNameLabel"></span>
-            </button>
-          </div>
-
-          <!-- BATCH SECTION (ACCORDION DRAWER TO PREVENT SCROLL) -->
-          <details class="batch-drawer" id="batchDrawer">
-            <summary class="batch-summary">&#128193; BATCH QUEUE (<span id="batchCount">0</span>)</summary>
-            <ul class="batch-list" id="batchList">
-              <li class="empty-hint">Drop multiple files to batch.</li>
-            </ul>
-            <button class="btn btn-accent w-full" id="btnProcessBatch" disabled>BATCH PROCESS ALL</button>
-          </details>
         </aside>
 
         <!-- RIGHT: VIEWER & WORKSPACE -->
@@ -221,12 +240,14 @@
           </div>
 
           <div class="drop-zone" id="dropZone">
-            <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
-            
             <div class="drop-prompt" id="dropPrompt">
               <div class="drop-icon">&#8681;</div>
-              <p><strong>DROP AI IMAGE OR CLICK TO BROWSE</strong></p>
+              <p><strong>DROP AI IMAGE HERE OR CLICK TO BROWSE</strong></p>
               <p><small>Supports any size (e.g. 500x370, 1024x1024) from Gemini, Nano-Banana, or ComfyUI</small></p>
+              <div class="drop-actions">
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">&#128194; BROWSE MAIN IMAGE</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('paletteFileInput').click()">&#127912; BROWSE PALETTE IMAGE</button>
+              </div>
             </div>
 
             <div class="canvas-wrapper" id="canvasWrapper" style="display:none;">
@@ -256,61 +277,319 @@
       </div>
     </main>
 
-    <!-- TAB 2: NANO-BANANA PROMPT LAB -->
+﻿    <!-- TAB 2: NANO-BANANA PROMPT LAB -->
     <section class="tab-content" id="tab-prompt">
       <div class="prompt-lab-container">
-        <h2>NANO-BANANA (GEMINI) GAME ASSET PROMPT GENERATOR</h2>
-        <p>Use these prompts in Gemini to generate orthogonal concepts with zero camera tilt before running them through Pixel Snapper.</p>
-
-        <div class="prompt-cards-grid">
-          <div class="prompt-card">
-            <h3>Cyberpunk Blast Door (Split Horizontal)</h3>
-            <p class="prompt-text">16-bit retro arcade pixel art sprite of an industrial cyberpunk sliding blast door, split down the middle with heavy interlocking steel teeth. Straight flat orthogonal front view, 2D top-down game perspective, perfectly symmetrical. Dark metallic navy panels, prominent yellow and black diagonal hazard warning stripes, glowing neon cyan wiring tubes running vertically along the frame, recessed electronic keycard terminal. Solid plain black background, crisp pixel edges, limited vibrant 80s arcade color palette.</p>
-            <button class="btn btn-copy" onclick="copyCardPrompt(this)">COPY PROMPT</button>
+        <!-- GLOBAL ART STYLE BANNER -->
+        <div class="global-artstyle-card">
+          <div class="artstyle-header">
+            <div class="artstyle-title">
+              <span class="icon">&#9881;</span>
+              <h3>GLOBAL ART STYLE PROMPT (AUTO-APPENDED TO ALL CARDS)</h3>
+            </div>
+            <button class="btn btn-tool" id="btnCopyArtstyleOnly">&#128203; COPY ART STYLE ONLY</button>
           </div>
+          <p class="artstyle-hint">This art style focuses strictly on the 80s arcade garagedev aesthetic, clean pixel grid, sub-pixel elimination, and magenta chroma keying. It contains NO subject-specific words so it pairs seamlessly with every prompt card below.</p>
+          <textarea id="globalArtstyleText" rows="2" class="artstyle-textarea">16-bit retro arcade pixel art sprite, authentic clean pixel grid, limited vibrant 80s arcade cyberpunk color palette, crisp sub-pixel-free edges, flat lighting, no 3D rendering blur, no anti-aliasing fuzz, game asset sprite isolated on solid plain magenta #FF00FF background for alpha masking.</textarea>
+        </div>
 
-          <div class="prompt-card">
-            <h3>Hacking Terminal Console (Prop)</h3>
-            <p class="prompt-text">16-bit pixel art sprite of a standing futuristic server terminal rack with glowing green CRT monitor displaying scrolling regular expression code, exposed colored ribbon cables, blinking red status LEDs, dark brushed titanium casing. Flat 2D front view, no angled perspective, solid magenta background.</p>
-            <button class="btn btn-copy" onclick="copyCardPrompt(this)">COPY PROMPT</button>
+        <!-- SECTION 1: FLOORS & GROUNDS (6 PROMPTS) -->
+        <div class="prompt-category">
+          <h2 class="category-title">&#129521; FLOORS & STREET SURFACES (TOP-DOWN 2D TILES)</h2>
+          <div class="prompt-cards-grid">
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>1. Cobblestone Street</h3>
+                <span class="badge-angle">Top-Down 90° Seamless</span>
+              </div>
+              <p class="prompt-text">Flat top-down 2D floor tile of a wet dark cyberpunk cobblestone street, rounded basalt paving stones, dark water puddles reflecting neon blue light, subtle grime in the mortar joints. Straight bird's-eye view, repeatable seamless game tile texture.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>2. Concrete Sidewalk Slabs</h3>
+                <span class="badge-angle">Top-Down 90° Seamless</span>
+              </div>
+              <p class="prompt-text">Flat top-down 2D floor tile of an urban sidewalk pavement with rectangular heavy concrete slabs, fine expansion cracks, dirt accumulated in crevices, industrial curb edge. Straight-down orthogonal game perspective, repeatable tile texture.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>3. Overgrown Urban Grass</h3>
+                <span class="badge-angle">Top-Down 90° Seamless</span>
+              </div>
+              <p class="prompt-text">Flat top-down 2D ground tile of dark wild grass tufts breaking through cracked city pavement, tiny weeds, scattered patches of dark damp soil. Orthogonal 90-degree bird's-eye top-down view, repeatable game tile.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>4. Cheap Store Floor (Linoleum)</h3>
+                <span class="badge-angle">Top-Down 90° Seamless</span>
+              </div>
+              <p class="prompt-text">Flat top-down 2D floor tile of a rundown corner store bodega interior floor, beige and dull green square linoleum vinyl tiles, scuff marks, worn adhesive seams, slight dirty sheen. Straight-down orthogonal game perspective.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>5. Luxury Store Marble Floor</h3>
+                <span class="badge-angle">Top-Down 90° Seamless</span>
+              </div>
+              <p class="prompt-text">Flat top-down 2D floor tile of an upscale cyberpunk boutique or corporate lobby, large polished black and white Carrara marble slabs with delicate gold and gray veining, high-gloss clean reflective finish. Perfectly flat orthogonal top-down 2D game tile.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>6. Asphalt Road with Hazard Lines</h3>
+                <span class="badge-angle">Top-Down 90° Seamless</span>
+              </div>
+              <p class="prompt-text">Flat top-down 2D floor tile of cracked weathered asphalt road surface with faded yellow double hazard line road markings, tiny sewer drainage slots, oil stain patches. Flat orthogonal top-down 2D game perspective.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
           </div>
+        </div>
 
-          <div class="prompt-card">
-            <h3>Street Roadblock Barricade</h3>
-            <p class="prompt-text">16-bit pixel art sprite of a heavy concrete and steel street roadblock barrier with flashing amber emergency strobe lights. Perfectly flat straight-on view, 2D top-down game asset. Scratched weathered concrete base, yellow hazard stripes, warning stencils. Solid flat black background.</p>
-            <button class="btn btn-copy" onclick="copyCardPrompt(this)">COPY PROMPT</button>
+        <!-- SECTION 2: WALLS (6 TYPES - FLAT 90° FRONT ELEVATION) -->
+        <div class="prompt-category">
+          <h2 class="category-title">&#129521; WALLS (6 TYPES - FLAT 90° FRONT ELEVATION)</h2>
+          <div class="prompt-cards-grid">
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>1. Concrete Blast Wall</h3>
+                <span class="badge-angle">Flat 90° Front Elevation</span>
+              </div>
+              <p class="prompt-text">Wall sprite: Flat 90° orthogonal front elevation view, 2D top-down beat 'em up game perspective, zero camera tilt. Thick reinforced dark concrete blast wall with recessed industrial expansion joints, vertical yellow and black diagonal hazard warning stripes, glowing neon cyan conduit tubes, stencil numbering.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>2. Weathered Red Brick Wall</h3>
+                <span class="badge-angle">Flat 90° Front Elevation</span>
+              </div>
+              <p class="prompt-text">Wall sprite: Flat 90° orthogonal front elevation view, 2D top-down game perspective, zero perspective distortion. Vintage weathered red and soot-stained brick wall, exposed rusty cast-iron drainage pipes, gray electrical junction box, faded punk graffiti tags, gritty urban alley feel.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>3. Corrugated Metal Wall</h3>
+                <span class="badge-angle">Flat 90° Front Elevation</span>
+              </div>
+              <p class="prompt-text">Wall sprite: Flat 90° orthogonal front elevation view, 2D top-down game perspective. Industrial warehouse wall built with dark galvanized corrugated iron siding panels, horizontal reinforcement steel beams, rust streaks, heavy industrial rivets.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>4. Storefront Window Wall</h3>
+                <span class="badge-angle">Flat 90° Front Elevation</span>
+              </div>
+              <p class="prompt-text">Wall sprite: Flat 90° orthogonal front elevation view, 2D top-down perspective. Futuristic city storefront wall, dark brushed aluminum window frames, reinforced tinted shatterproof glass panels, neon promotional sign visible inside shop.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>5. Cyber Bunker Titanium Bulkhead</h3>
+                <span class="badge-angle">Flat 90° Front Elevation</span>
+              </div>
+              <p class="prompt-text">Wall sprite: Flat 90° orthogonal front elevation view, 2D top-down perspective. Heavy military-grade titanium bulkhead wall, modular interlocking armor plating, hydraulic lock mechanisms, blinking red and green status LED strip.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>6. Server Room Data Wall</h3>
+                <span class="badge-angle">Flat 90° Front Elevation</span>
+              </div>
+              <p class="prompt-text">Wall sprite: Flat 90° orthogonal front elevation view, 2D top-down perspective. High-tech server mainframe wall with modular server blade racks, green CRT readout meters, bundled colorful ribbon cables, industrial ventilation intake grilles.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: DOORS (HORIZONTAL & VERTICAL) -->
+        <div class="prompt-category">
+          <h2 class="category-title">&#128682; DOORS (HORIZONTAL & VERTICAL AXES)</h2>
+          <div class="prompt-cards-grid">
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Horizontal Blast Door (Spans Wall)</h3>
+                <span class="badge-angle">Flat 90° Front Elevation</span>
+              </div>
+              <p class="prompt-text">Door sprite: Flat 90° orthogonal front elevation view, 2D top-down game perspective, perfectly symmetrical. Industrial cyberpunk sliding blast door, split down the middle with heavy interlocking steel teeth, glowing neon cyan wiring tubes, yellow hazard stripes, electronic keycard terminal.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Vertical / Corridor Door (Side Profile)</h3>
+                <span class="badge-angle">90° Orthogonal Side Wall Profile</span>
+              </div>
+              <p class="prompt-text">Door sprite: Orthogonal 90° side profile wall view for vertical corridor walls in 2D top-down game perspective, zero perspective angle. Side wall doorframe cutaway showing sliding steel security hatch recessed into the vertical wall depth, side-mounted biometric scanner, vertical caution hazard decals.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 4: OBJECTS, LARGE PROPS & OBSTACLES -->
+        <div class="prompt-category">
+          <h2 class="category-title">&#128230; STREET OBJECTS & LARGE PROPS</h2>
+          <div class="prompt-cards-grid">
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Sewer Manhole Cover</h3>
+                <span class="badge-angle">Top-Down 90° Orthogonal</span>
+              </div>
+              <p class="prompt-text">Prop sprite: Flat circular heavy cast-iron sewer manhole cover with embossed diamond grid tread pattern and municipal city logo, set flush into cracked asphalt street. Orthogonal 90° bird's-eye view.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Storm Drain / Open Sewer Grate</h3>
+                <span class="badge-angle">Top-Down 90° Orthogonal</span>
+              </div>
+              <p class="prompt-text">Prop sprite: Rectangular heavy steel drainage grate over an open storm drain gutter along a street curb, dark opening underneath with faint murky sewer water reflections. Orthogonal top-down 2D game prop.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Sidewalk Curbs & Edges</h3>
+                <span class="badge-angle">Flat 2D Game Prop</span>
+              </div>
+              <p class="prompt-text">Prop sprite: Straight and corner stone curb barriers with chipped yellow safety paint, dirt and trash collected along the gutter edge, flat 2D game asset.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Wrecked Cars Pile (RE3 Street Blockade)</h3>
+                <span class="badge-angle">Large Prop / Obstacle</span>
+              </div>
+              <p class="prompt-text">Large prop obstacle: A dense barricade pile of crashed, crushed, and rusted 80s and 90s city sedans and taxi cabs blocking a street, shattered windshield glass, crumpled hoods, smoke soot, apocalyptic street blockade a la Resident Evil 3. Flat orthogonal 2D top-down game asset.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Concrete Roadblock Barricades</h3>
+                <span class="badge-angle">Obstacle Prop</span>
+              </div>
+              <p class="prompt-text">Prop sprite: Heavy portable concrete Jersey roadblock barriers with yellow-black diagonal hazard stripes and flashing battery-powered amber emergency strobe lights. Flat 2D front view, no angled perspective.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Toxic & Steel Barrels</h3>
+                <span class="badge-angle">Set of 3 Barrels</span>
+              </div>
+              <p class="prompt-text">Prop sprite: Trio of weathered steel 55-gallon oil drums, one dented and displaying a radioactive biohazard stencil with glowing lime-green residue leakage. Flat 2D front view.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Wooden & Military Crates</h3>
+                <span class="badge-angle">Stack of Props</span>
+              </div>
+              <p class="prompt-text">Prop sprite: Stack of reinforced wooden shipping cargo crates and olive-drab steel military footlockers with steel corner brackets and stencil shipping labels. Flat 2D front view.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Cyberpunk Delivery Van</h3>
+                <span class="badge-angle">Large Prop Vehicle</span>
+              </div>
+              <p class="prompt-text">Large prop sprite: Boxy 80s retro cyberpunk urban delivery van, side sliding door, roof equipment rack, reinforced front bumper, weathered navy blue and yellow livery. Flat 2D orthogonal top-down and side views, zero perspective tilt.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
+
+            <div class="prompt-card">
+              <div class="card-header">
+                <h3>Semi-Truck 18-Wheeler & Trailer</h3>
+                <span class="badge-angle">Massive Prop Obstacle</span>
+              </div>
+              <p class="prompt-text">Large prop obstacle: Massive industrial long-haul cyber truck with heavy chrome grille, dual vertical exhaust smokestacks, and refrigerated container trailer jackknifed blocking the street. Flat 2D top-down orthogonal game asset.</p>
+              <button class="btn btn-copy" onclick="copyCardPrompt(this)">&#128203; COPY FULL PROMPT</button>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- TAB 3: COMFYUI DUAL PIPELINE GUIDE -->
+﻿    <!-- TAB 3: COMFYUI PRO CONFIGURATIONS -->
     <section class="tab-content" id="tab-comfy">
       <div class="guide-container">
-        <h2>PROVEN COMFYUI DUAL CONFIGURATION (RTX 5060 Ti 16GB)</h2>
+        <h2>COMFYUI PROFESSIONAL PIXEL ART WORKFLOWS (PROVEN BEST CONFIGURATIONS)</h2>
+        <p>Forget toy/fast setups: these are the 3 battle-tested professional pipelines delivering mathematically aligned, native-feel retro game assets using Depth ControlNet, custom LoRAs, and the PixelBlasphemy Snapper node.</p>
+
         <div class="pipeline-comparison">
+          <!-- APPROACH 1: SDXL SPECIALIST -->
           <div class="pipeline-box">
-            <h3>PROFILE A: FAST PROTOTYPE (SD 1.5)</h3>
+            <div class="pipeline-header">
+              <span class="tag-badge">APPROACH 1</span>
+              <h3>SDXL DUAL CONTROLNET SPECIALIST (BEST FOR ARCHITECTURE & PROPS)</h3>
+            </div>
             <ul>
-              <li><strong>Speed:</strong> 0.8 - 1.2s per generation</li>
-              <li><strong>Model:</strong> <code>v1-5-pruned-emaonly.safetensors</code></li>
-              <li><strong>ControlNet:</strong> <code>control_v11f1p_sd15_depth.pth</code> (strength 0.9)</li>
-              <li><strong>LoRA:</strong> Pixel Art LoRA (strength 0.75)</li>
-              <li><strong>Resolution:</strong> 512x512</li>
-              <li><strong>Final Node:</strong> Sprite Fusion Pixel Snapper (k=16)</li>
+              <li><strong>Base Checkpoint:</strong> <code>PixelArtXL_v1.safetensors</code> or <code>juggernautXL_v9</code></li>
+              <li><strong>ControlNet 1 (Depth):</strong> <code>controlnet-depth-sdxl-1.0</code> (Strength: 0.85, Start: 0.0, End: 0.85) &rarr; Locks flat 90° orthogonal perspective & prevents 3D tilt.</li>
+              <li><strong>ControlNet 2 (LineArt / Canny):</strong> <code>controlnet-lineart-sdxl-1.0</code> (Strength: 0.60) &rarr; Preserves hard mechanical edges & door splits.</li>
+              <li><strong>LoRA:</strong> <code>PixelArtReduxXL</code> (Strength: 0.80) &rarr; Eliminates painterly gradients and forces discrete pixel clusters.</li>
+              <li><strong>Generation Resolution:</strong> 1024x1024 native SDXL</li>
+              <li><strong>Sampler & Steps:</strong> DPM++ 2M Karras, 28 steps, CFG 6.5</li>
+              <li><strong>Post-Process Node:</strong> <code>PixelBlasphemy Snapper (Sprite Fusion)</code> custom node: Downscale /16 to 64x64, Outline Weight: 1.5x, K-Means: 16 colors.</li>
             </ul>
           </div>
+
+          <!-- APPROACH 2: FLUX.1 DEV -->
           <div class="pipeline-box">
-            <h3>PROFILE B: ULTRA FIDELITY (SDXL)</h3>
+            <div class="pipeline-header">
+              <span class="tag-badge">APPROACH 2</span>
+              <h3>FLUX.1 DEV + DEPTH CONTROLNET (STATE-OF-THE-ART ZERO HALLUCINATION)</h3>
+            </div>
             <ul>
-              <li><strong>Speed:</strong> 5.0 - 7.5s per generation</li>
-              <li><strong>Model:</strong> <code>juggernautXL_v9</code> or <code>realvisxlV40</code></li>
-              <li><strong>ControlNet:</strong> <code>controlnet-depth-sdxl-1.0</code></li>
-              <li><strong>LoRA:</strong> PixelArtXL (strength 0.8)</li>
-              <li><strong>Resolution:</strong> 1024x1024</li>
-              <li><strong>Final Node:</strong> Sprite Fusion Pixel Snapper (k=24)</li>
+              <li><strong>Base Checkpoint:</strong> <code>flux1-dev.safetensors</code> (or <code>flux1-schnell</code>)</li>
+              <li><strong>ControlNet:</strong> <code>flux-controlnet-depth</code> (Strength: 0.90) &rarr; Unrivaled spatial fidelity; props stay precisely inside collision bounding boxes.</li>
+              <li><strong>LoRA:</strong> <code>flux_pixel_art_v2</code> (Strength: 0.75)</li>
+              <li><strong>Prompt Adherence:</strong> Flawlessly follows fine details like "yellow and black diagonal warning stripes" and "cracked concrete slabs".</li>
+              <li><strong>Sampler & Steps:</strong> Euler, Flux Guidance 3.5, 25 steps</li>
+              <li><strong>Post-Process Node:</strong> <code>PixelBlasphemy Snapper</code> node: Direct nearest-neighbor downsampling to target size with Tezumie Floyd-Steinberg dither pass.</li>
             </ul>
           </div>
+
+          <!-- APPROACH 3: SPECIALIZED NATIVE PIXEL WAVE -->
+          <div class="pipeline-box">
+            <div class="pipeline-header">
+              <span class="tag-badge">APPROACH 3</span>
+              <h3>SPECIALIZED NATIVE PIXEL CHECKPOINT + TILE CONTROLNET (BEST FOR FLOORS)</h3>
+            </div>
+            <ul>
+              <li><strong>Base Checkpoint:</strong> <code>PixelWave_FLUX</code> or <code>RetroDiffusion_v2.ckpt</code></li>
+              <li><strong>ControlNet:</strong> <code>controlnet-tile</code> (Strength: 0.80) &rarr; Essential for generating seamless repeating floor textures with zero seams.</li>
+              <li><strong>Palette Clamping:</strong> Direct injection of 16-color Cyberpunk or Endesga 32 palette during K-Means clustering.</li>
+              <li><strong>Negative Prompt:</strong> <code>photorealistic, smooth gradients, 3d render, sub-pixel blur, anti-aliased edges, blurry</code></li>
+              <li><strong>Post-Process Node:</strong> <code>PixelBlasphemy Snapper</code> node: Hard Alpha binary clamp (alpha > 64 &rarr; 255) + 1-px arcade outline pass.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="node-install-card">
+          <h3>&#128295; INSTALLING THE PIXELBLASPHEMY SNAPPER NODE IN COMFYUI</h3>
+          <p>Run the following in your ComfyUI directory to install the native node wrapper:</p>
+          <pre><code>cd ComfyUI/custom_nodes
+git clone https://github.com/Hugo-Dz/spritefusion-pixel-snapper pixel-blasphemy-snapper
+cd pixel-blasphemy-snapper
+pip install -r requirements.txt</code></pre>
+          <p>The node will appear in ComfyUI under <strong>Image &rarr; Post-Processing &rarr; PixelBlasphemy Snapper</strong>.</p>
         </div>
       </div>
     </section>

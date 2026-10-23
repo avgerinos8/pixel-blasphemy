@@ -1,4 +1,4 @@
-﻿// PixelBlasphemy Studio v1.4 - Reference Palette Extractor + Tezumie Dither Engine & 100% Zero-Scroll Layout
+﻿// PixelBlasphemy Studio v1.5 - Pro AI Pixel Art & Snapper Pipeline
 
 const PALETTES = {
   auto: null,
@@ -30,6 +30,23 @@ const PALETTES = {
   ]
 };
 
+const DEFAULTS = {
+  divisor: 8,
+  outlineWeight: 1.5,
+  edgeSensitivity: 0.5,
+  autoOutline: false,
+  autoOutlineColor: '#000000',
+  snapAlpha: true,
+  tezumieEnabled: false,
+  tezumieMethod: 'floyd-steinberg',
+  tezumieStrength: 0.75,
+  colorCount: 16,
+  kmeansIter: 15,
+  palette: 'auto',
+  zoom: 100,
+  grid: true
+};
+
 // Global State
 let loadedFilename = "image.png";
 let rawImageElement = null;
@@ -54,6 +71,7 @@ let paletteRefName = "";
 const dropZone = document.getElementById('dropZone');
 const dropPrompt = document.getElementById('dropPrompt');
 const fileInput = document.getElementById('fileInput');
+const paletteFileInput = document.getElementById('paletteFileInput');
 const canvasWrapper = document.getElementById('canvasWrapper');
 const viewportScroller = document.getElementById('viewportScroller');
 const canvasScaler = document.getElementById('canvasScaler');
@@ -61,12 +79,14 @@ const mainCanvas = document.getElementById('mainCanvas');
 const splitBar = document.getElementById('splitBar');
 const ctx = mainCanvas.getContext('2d');
 
+const btnOpenMainImage = document.getElementById('btnOpenMainImage');
+const btnOpenPaletteImage = document.getElementById('btnOpenPaletteImage');
+const btnResetAll = document.getElementById('btnResetAll');
+
 const viewerToolbar = document.getElementById('viewerToolbar');
 const loadedFilenameEl = document.getElementById('loadedFilename');
 const origDimBadge = document.getElementById('origDimBadge');
 const btnCloseImage = document.getElementById('btnCloseImage');
-const btnBrowseNew = document.getElementById('btnBrowseNew');
-const quickLoadGroup = document.getElementById('quickLoadGroup');
 
 // Zoom & Grid controls
 const zoomSlider = document.getElementById('zoomSlider');
@@ -77,7 +97,7 @@ const btnFitZoom = document.getElementById('btnFitZoom');
 const btnResetZoom = document.getElementById('btnResetZoom');
 const btnToggleGrid = document.getElementById('btnToggleGrid');
 
-// Scale & Synced Fields
+// Scale & Synced Controls
 const scaleGroup = document.getElementById('scaleGroup');
 const targetDimText = document.getElementById('targetDimText');
 const outlineWeight = document.getElementById('outlineWeight');
@@ -103,12 +123,10 @@ const tezumieStrengthNum = document.getElementById('tezumieStrengthNum');
 // Palette DOM
 const paletteSelect = document.getElementById('paletteSelect');
 const palettePreview = document.getElementById('palettePreview');
-const paletteFileInput = document.getElementById('paletteFileInput');
-const btnUploadPaletteRef = document.getElementById('btnUploadPaletteRef');
-const btnClearPaletteRef = document.getElementById('btnClearPaletteRef');
 const paletteRefBadge = document.getElementById('paletteRefBadge');
 const paletteRefThumb = document.getElementById('paletteRefThumb');
 const paletteRefNameEl = document.getElementById('paletteRefName');
+const btnClearPaletteRef = document.getElementById('btnClearPaletteRef');
 
 // Download & Stats
 const btnDownload = document.getElementById('btnDownload');
@@ -182,20 +200,96 @@ snapAlpha.addEventListener('change', () => triggerPreviewDebounced());
 // SCALE BUTTONS (1x, /2, /4, /8, /16)
 scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    scaleGroup.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentDivisor = parseInt(btn.dataset.divisor) || 1;
+    selectDivisor(parseInt(btn.dataset.divisor) || 1);
     updateDimensionsUI();
     triggerPreviewDebounced();
   });
 });
 
-// REFERENCE IMAGE PALETTE UPLOADER
-btnUploadPaletteRef.addEventListener('click', (e) => {
-  e.stopPropagation();
-  paletteFileInput.click();
+function selectDivisor(d) {
+  currentDivisor = d;
+  scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.divisor) === d);
+  });
+}
+
+// TOP ACTION BUTTONS: OPEN MAIN & OPEN PALETTE
+btnOpenMainImage.addEventListener('click', () => fileInput.click());
+btnOpenPaletteImage.addEventListener('click', () => paletteFileInput.click());
+
+// MASTER RESET ALL SETTINGS TO DEFAULTS
+btnResetAll.addEventListener('click', () => {
+  selectDivisor(DEFAULTS.divisor);
+  outlineWeight.value = DEFAULTS.outlineWeight;
+  outlineWeightNum.value = DEFAULTS.outlineWeight;
+  edgeSensitivity.value = DEFAULTS.edgeSensitivity;
+  edgeSensitivityNum.value = DEFAULTS.edgeSensitivity;
+
+  autoOutlineToggle.checked = DEFAULTS.autoOutline;
+  autoOutlineColor.value = DEFAULTS.autoOutlineColor;
+  snapAlpha.checked = DEFAULTS.snapAlpha;
+
+  tezumieToggle.checked = DEFAULTS.tezumieEnabled;
+  tezumieOptions.style.display = 'none';
+  tezumieMethod.value = DEFAULTS.tezumieMethod;
+  tezumieStrength.value = DEFAULTS.tezumieStrength;
+  tezumieStrengthNum.value = DEFAULTS.tezumieStrength;
+
+  colorCount.value = DEFAULTS.colorCount;
+  colorCountNum.value = DEFAULTS.colorCount;
+  kmeansIter.value = DEFAULTS.kmeansIter;
+  kmeansIterNum.value = DEFAULTS.kmeansIter;
+
+  paletteSelect.value = DEFAULTS.palette;
+  updatePalettePreview();
+  updateDimensionsUI();
+  triggerPreviewDebounced();
 });
 
+// INDIVIDUAL PARAMETER RESET BUTTONS
+document.querySelectorAll('.btn-reset-param').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const param = btn.dataset.param;
+
+    if (param === 'divisor') {
+      selectDivisor(DEFAULTS.divisor);
+      updateDimensionsUI();
+    } else if (param === 'outlineWeight') {
+      outlineWeight.value = DEFAULTS.outlineWeight;
+      outlineWeightNum.value = DEFAULTS.outlineWeight;
+    } else if (param === 'edgeSensitivity') {
+      edgeSensitivity.value = DEFAULTS.edgeSensitivity;
+      edgeSensitivityNum.value = DEFAULTS.edgeSensitivity;
+    } else if (param === 'autoOutline') {
+      autoOutlineToggle.checked = DEFAULTS.autoOutline;
+      autoOutlineColor.value = DEFAULTS.autoOutlineColor;
+    } else if (param === 'snapAlpha') {
+      snapAlpha.checked = DEFAULTS.snapAlpha;
+    } else if (param === 'tezumie') {
+      tezumieToggle.checked = DEFAULTS.tezumieEnabled;
+      tezumieOptions.style.display = 'none';
+      tezumieMethod.value = DEFAULTS.tezumieMethod;
+      tezumieStrength.value = DEFAULTS.tezumieStrength;
+      tezumieStrengthNum.value = DEFAULTS.tezumieStrength;
+    } else if (param === 'colorCount') {
+      colorCount.value = DEFAULTS.colorCount;
+      colorCountNum.value = DEFAULTS.colorCount;
+      updatePalettePreview();
+    } else if (param === 'kmeansIter') {
+      kmeansIter.value = DEFAULTS.kmeansIter;
+      kmeansIterNum.value = DEFAULTS.kmeansIter;
+      updatePalettePreview();
+    } else if (param === 'palette') {
+      paletteSelect.value = DEFAULTS.palette;
+      updatePalettePreview();
+    }
+
+    triggerPreviewDebounced();
+  });
+});
+
+﻿// REFERENCE IMAGE PALETTE UPLOADER
 paletteFileInput.addEventListener('change', (e) => {
   if (e.target.files && e.target.files[0]) {
     loadPaletteReferenceImage(e.target.files[0]);
@@ -208,8 +302,6 @@ function loadPaletteReferenceImage(file) {
   reader.onload = (ev) => {
     const img = new Image();
     img.onload = () => {
-      // Sample pixels from reference image using an offscreen canvas
-      // Downsample reference image to max 192px for instant K-Means performance
       const maxDim = Math.max(img.width, img.height);
       const scale = Math.min(1, 192 / maxDim);
       const pw = Math.max(1, Math.round(img.width * scale));
@@ -224,7 +316,7 @@ function loadPaletteReferenceImage(file) {
       const pData = pCtx.getImageData(0, 0, pw, ph).data;
       const pixels = [];
       for (let i = 0; i < pData.length; i += 4) {
-        if (pData[i + 3] > 32) { // Skip transparent pixels
+        if (pData[i + 3] > 32) {
           pixels.push([pData[i], pData[i + 1], pData[i + 2]]);
         }
       }
@@ -236,21 +328,17 @@ function loadPaletteReferenceImage(file) {
 
       paletteRefPixels = pixels;
 
-      // Update UI
       paletteRefThumb.src = ev.target.result;
       paletteRefNameEl.textContent = paletteRefName;
       paletteRefBadge.style.display = 'flex';
-      btnClearPaletteRef.style.display = 'inline-block';
-      btnUploadPaletteRef.textContent = '📷 REPLACE REF IMAGE';
 
-      // Ensure 'reference' option exists in select and select it
       let refOpt = paletteSelect.querySelector('option[value="reference"]');
       if (!refOpt) {
         refOpt = document.createElement('option');
         refOpt.value = 'reference';
         paletteSelect.insertBefore(refOpt, paletteSelect.firstChild);
       }
-      refOpt.textContent = `★ Custom Ref: ${paletteRefName} (K-Means)`;
+      refOpt.textContent = `★ Ref Image: ${paletteRefName} (K-Means)`;
       paletteSelect.value = 'reference';
 
       updatePalettePreview();
@@ -269,8 +357,6 @@ btnClearPaletteRef.addEventListener('click', (e) => {
   paletteFileInput.value = '';
 
   paletteRefBadge.style.display = 'none';
-  btnClearPaletteRef.style.display = 'none';
-  btnUploadPaletteRef.textContent = '📷 UPLOAD PALETTE REFERENCE IMAGE';
 
   const refOpt = paletteSelect.querySelector('option[value="reference"]');
   if (refOpt) refOpt.remove();
@@ -297,7 +383,7 @@ function updatePalettePreview() {
   if (preset) {
     renderSwatches(preset);
   } else {
-    palettePreview.innerHTML = '<span style="color:#64748b;font-size:0.65rem;padding:1px 4px;">Auto K-Means (Active Image)</span>';
+    palettePreview.innerHTML = '<span style="color:#64748b;font-size:0.68rem;padding:2px 4px;">Auto K-Means (Active Image)</span>';
   }
 }
 
@@ -329,8 +415,8 @@ function setZoom(val) {
 
 function fitZoomToContainer() {
   if (!rawImageElement) return;
-  const containerW = viewportScroller.clientWidth - 24;
-  const containerH = viewportScroller.clientHeight - 24;
+  const containerW = viewportScroller.clientWidth - 28;
+  const containerH = viewportScroller.clientHeight - 28;
   const imgW = rawImageElement.naturalWidth || rawImageElement.width;
   const imgH = rawImageElement.naturalHeight || rawImageElement.height;
 
@@ -348,7 +434,6 @@ btnFitZoom.addEventListener('click', () => fitZoomToContainer());
 btnResetZoom.addEventListener('click', () => setZoom(100));
 
 window.addEventListener('resize', () => {
-  // If in fit zoom or responsive mode, maintain layout
   applyZoomToCanvas();
 });
 
@@ -382,12 +467,6 @@ btnToggleGrid.addEventListener('click', () => {
 });
 
 // FILE DRAG & DROP / SELECTION
-dropPrompt.addEventListener('click', (e) => {
-  e.stopPropagation();
-  fileInput.click();
-});
-btnBrowseNew.addEventListener('click', () => fileInput.click());
-
 dropZone.addEventListener('dragover', (e) => {
   e.preventDefault();
   dropZone.classList.add('dragover');
@@ -446,7 +525,6 @@ function loadImage(file) {
       
       dropPrompt.style.display = 'none';
       viewerToolbar.style.display = 'flex';
-      quickLoadGroup.style.display = 'block';
       canvasWrapper.style.display = 'flex';
 
       const maxDim = Math.max(w, h);
@@ -457,7 +535,6 @@ function loadImage(file) {
 
       updateDimensionsUI();
 
-      // Fit to container dimensions if larger than view area
       setTimeout(() => {
         const scrollerW = viewportScroller.clientWidth - 30;
         const scrollerH = viewportScroller.clientHeight - 30;
@@ -476,13 +553,6 @@ function loadImage(file) {
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
-}
-
-function selectDivisor(d) {
-  currentDivisor = d;
-  scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
-    btn.classList.toggle('active', parseInt(btn.dataset.divisor) === d);
-  });
 }
 
 function updateDimensionsUI() {
@@ -508,7 +578,6 @@ btnCloseImage.addEventListener('click', () => {
   currentSnappedCanvas = null;
 
   viewerToolbar.style.display = 'none';
-  quickLoadGroup.style.display = 'none';
   canvasWrapper.style.display = 'none';
   dropPrompt.style.display = 'block';
 
@@ -530,7 +599,7 @@ function triggerPreviewDebounced() {
   }, 30);
 }
 
-// NON-DESTRUCTIVE PREVIEW PIPELINE (STRICT DETERMINISTIC CONCURRENCY GUARD)
+// PREVIEW PIPELINE (STRICT CONCURRENCY GUARD & DETERMINISTIC RE-RUN)
 async function updatePreviewAsync() {
   if (!rawImageElement) return;
   
@@ -552,7 +621,6 @@ async function updatePreviewAsync() {
     const oWeight = parseFloat(outlineWeight.value) || 1.5;
     const snapAlphaChecked = snapAlpha.checked;
 
-    // Offscreen downsampling canvas
     let offCanvas = document.createElement('canvas');
     offCanvas.width = targetW;
     offCanvas.height = targetH;
@@ -560,11 +628,7 @@ async function updatePreviewAsync() {
     offCtx.imageSmoothingEnabled = false;
     offCtx.drawImage(rawImageElement, 0, 0, targetW, targetH);
 
-    // STEP 1: EXTRACT PALETTE
-    // Priority:
-    // A. Reference Image (if uploaded and selected in dropdown)
-    // B. Preset Palette (if selected from dropdown)
-    // C. Auto K-Means (sampled from current image with outline preservation)
+    // STEP 1: PALETTE SELECTION
     let palette = null;
     const pChoice = paletteSelect.value;
 
@@ -573,7 +637,6 @@ async function updatePreviewAsync() {
     } else if (PALETTES[pChoice]) {
       palette = PALETTES[pChoice];
     } else {
-      // Auto: Extract from current downsampled target image
       const imgData = offCtx.getImageData(0, 0, targetW, targetH);
       const data = imgData.data;
       const pixels = [];
@@ -584,7 +647,6 @@ async function updatePreviewAsync() {
           const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
           pixels.push([r, g, b]);
 
-          // Outline preservation weight
           if (luminance < 75 && oWeight > 1.0) {
             const extraCopies = Math.round(oWeight - 1.0);
             for (let c = 0; c < extraCopies; c++) {
@@ -599,14 +661,13 @@ async function updatePreviewAsync() {
       }
     }
 
-    // Update dynamic palette preview
     if (palette && (pChoice === 'auto' || pChoice === 'reference')) {
       renderSwatches(palette);
     }
 
     if (currentSession !== previewSessionId) return;
 
-    // STEP 2: QUANTIZATION & DITHER PASS
+    // STEP 2: DITHER / QUANTIZATION PASS
     const useTezumie = tezumieToggle.checked && window.ImageToPixel && window.ImageToPixel.pixelate;
 
     if (useTezumie && palette && palette.length > 0) {
@@ -629,7 +690,7 @@ async function updatePreviewAsync() {
           offCtx = offCanvas.getContext('2d');
         }
       } catch (err) {
-        console.warn("Tezumie pass fallback to native:", err);
+        console.warn("Tezumie fallback to nearest:", err);
         remapToPalette(offCtx, targetW, targetH, palette, snapAlphaChecked);
       }
     } else if (palette && palette.length > 0) {
@@ -644,7 +705,7 @@ async function updatePreviewAsync() {
       applyArcadeOutline(offCtx, targetW, targetH, autoOutlineColor.value);
     }
 
-    // STEP 4: HARD ALPHA CLAMP (IF REQUESTED)
+    // STEP 4: HARD ALPHA CLAMP
     if (snapAlphaChecked) {
       clampAlpha(offCtx, targetW, targetH);
     }
@@ -663,7 +724,6 @@ async function updatePreviewAsync() {
   }
 }
 
-// DIRECT PALETTE REMAPPING (NEAREST NEIGHBOR EUCLIDEAN DISTANCE)
 function remapToPalette(ctx, w, h, palette, snapAlphaChecked) {
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
@@ -682,7 +742,6 @@ function remapToPalette(ctx, w, h, palette, snapAlphaChecked) {
   ctx.putImageData(imgData, 0, 0);
 }
 
-// 1-PIXEL ARCADE OUTLINE GENERATOR
 function applyArcadeOutline(ctx, w, h, hexColor) {
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
@@ -715,7 +774,6 @@ function applyArcadeOutline(ctx, w, h, hexColor) {
   ctx.putImageData(imgData, 0, 0);
 }
 
-// HARD ALPHA CLAMP
 function clampAlpha(ctx, w, h) {
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
@@ -725,7 +783,6 @@ function clampAlpha(ctx, w, h) {
   ctx.putImageData(imgData, 0, 0);
 }
 
-// COLOR UTILS
 function hexToRgb(hex) {
   const clean = hex.replace('#', '');
   return [
@@ -742,12 +799,10 @@ function rgbToHex(r, g, b) {
   }).join('');
 }
 
-// K-MEANS COLOR QUANTIZATION
 function runKMeans(pixels, k, iterations) {
   const actualK = Math.min(k, pixels.length);
   if (actualK <= 0) return [];
 
-  // Deterministic centroid spread
   const centroids = [];
   const step = Math.max(1, Math.floor(pixels.length / actualK));
   for (let i = 0; i < actualK; i++) {
@@ -808,7 +863,7 @@ function colorDistSq(c1, c2) {
   return dr * dr + dg * dg + db * db;
 }
 
-// RENDER SPLIT COMPARISON VIEW
+// RENDER SPLIT VIEW
 function renderSplitView() {
   if (!rawImageElement || !currentSnappedCanvas) return;
 
@@ -825,7 +880,7 @@ function renderSplitView() {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Left Side: Original Image
+  // Left: Original
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, splitX, h);
@@ -834,7 +889,7 @@ function renderSplitView() {
   ctx.drawImage(rawImageElement, 0, 0, w, h);
   ctx.restore();
 
-  // Right Side: Snapped scaled up with nearest neighbor
+  // Right: Snapped Nearest-Neighbor
   ctx.save();
   ctx.beginPath();
   ctx.rect(splitX, 0, w - splitX, h);
@@ -842,7 +897,7 @@ function renderSplitView() {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(currentSnappedCanvas, 0, 0, w, h);
 
-  // Pixel Grid Lines (on snapped side)
+  // Grid Lines
   if (showGrid) {
     const targetW = currentSnappedCanvas.width;
     const targetH = currentSnappedCanvas.height;
@@ -867,7 +922,7 @@ function renderSplitView() {
   ctx.restore();
 }
 
-// SPLIT BAR DRAGGING (INTERACTIVE & ZOOM AWARE)
+// SPLIT BAR DRAG
 let isDraggingSplit = false;
 canvasScaler.addEventListener('mousedown', (e) => {
   isDraggingSplit = true;
@@ -891,7 +946,7 @@ function updateSplitFromMouse(e) {
   renderSplitView();
 }
 
-// DOWNLOAD FINAL ASSET: [filename]_sn[sizeX].png
+// DOWNLOAD ASSET: [filename]_sn[sizeX].png
 btnDownload.addEventListener('click', () => {
   if (!currentSnappedCanvas || !rawImageElement) return;
 
@@ -905,16 +960,39 @@ btnDownload.addEventListener('click', () => {
   link.click();
 });
 
-// COPY PROMPT HELPER
+// TAB 2: PROMPT LAB COPY HELPERS
+const globalArtstyleText = document.getElementById('globalArtstyleText');
+const btnCopyArtstyleOnly = document.getElementById('btnCopyArtstyleOnly');
+
+btnCopyArtstyleOnly.addEventListener('click', () => {
+  navigator.clipboard.writeText(globalArtstyleText.value.trim()).then(() => {
+    const orig = btnCopyArtstyleOnly.textContent;
+    btnCopyArtstyleOnly.textContent = '✓ COPIED STYLE!';
+    btnCopyArtstyleOnly.style.borderColor = 'var(--accent-green)';
+    btnCopyArtstyleOnly.style.color = 'var(--accent-green)';
+    setTimeout(() => {
+      btnCopyArtstyleOnly.textContent = orig;
+      btnCopyArtstyleOnly.style.borderColor = 'var(--border-color)';
+      btnCopyArtstyleOnly.style.color = 'var(--text-main)';
+    }, 1500);
+  });
+});
+
 function copyCardPrompt(btn) {
-  const text = btn.parentElement.querySelector('.prompt-text').textContent;
-  navigator.clipboard.writeText(text).then(() => {
+  const card = btn.closest('.prompt-card');
+  const subjectText = card.querySelector('.prompt-text').textContent.trim();
+  const styleText = globalArtstyleText.value.trim();
+  const fullPrompt = `${subjectText} ${styleText}`;
+
+  navigator.clipboard.writeText(fullPrompt).then(() => {
     const orig = btn.textContent;
-    btn.textContent = 'COPIED TO CLIPBOARD!';
+    btn.textContent = '✓ COPIED (WITH ART STYLE)!';
     btn.style.backgroundColor = 'var(--accent-green)';
+    btn.style.color = '#000';
     setTimeout(() => {
       btn.textContent = orig;
-      btn.style.backgroundColor = 'var(--accent-cyan)';
+      btn.style.backgroundColor = 'var(--bg-card)';
+      btn.style.color = 'var(--accent-cyan)';
     }, 1500);
   });
 }
