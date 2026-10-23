@@ -753,8 +753,7 @@ html, body {
   display: inline-block;
   box-shadow: 0 0 25px rgba(0,0,0,0.85);
   border: 1px solid var(--border-color);
-  max-width: 100%;
-  max-height: 100%;
+  flex-shrink: 0;
 }
 
 #mainCanvas {
@@ -762,8 +761,6 @@ html, body {
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
-  max-width: 100%;
-  max-height: 100%;
 }
 
 .split-slider-bar {

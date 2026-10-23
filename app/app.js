@@ -40,11 +40,12 @@ const DEFAULTS = {
   tezumieEnabled: false,
   tezumieMethod: 'floyd-steinberg',
   tezumieStrength: 0.75,
+  pass2Enabled: false,
   colorCount: 16,
   kmeansIter: 15,
   palette: 'auto',
   zoom: 100,
-  grid: true
+  grid: false
 };
 
 // Global State
@@ -54,7 +55,7 @@ let currentSnappedCanvas = null;
 let currentDivisor = 8;
 let splitPosition = 0.5;
 let zoomPercent = 100;
-let showGrid = true;
+let showGrid = false;
 let batchFiles = [];
 
 // Concurrency & Session Management
@@ -119,6 +120,7 @@ const tezumieOptions = document.getElementById('tezumieOptions');
 const tezumieMethod = document.getElementById('tezumieMethod');
 const tezumieStrength = document.getElementById('tezumieStrength');
 const tezumieStrengthNum = document.getElementById('tezumieStrengthNum');
+const pass2Toggle = document.getElementById('pass2Toggle');
 
 // Palette DOM
 const paletteSelect = document.getElementById('paletteSelect');
@@ -196,6 +198,7 @@ tezumieMethod.addEventListener('change', () => triggerPreviewDebounced());
 autoOutlineToggle.addEventListener('change', () => triggerPreviewDebounced());
 autoOutlineColor.addEventListener('input', () => triggerPreviewDebounced());
 snapAlpha.addEventListener('change', () => triggerPreviewDebounced());
+pass2Toggle.addEventListener('change', () => triggerPreviewDebounced());
 
 // SCALE BUTTONS (1x, /2, /4, /8, /16)
 scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
@@ -234,6 +237,7 @@ btnResetAll.addEventListener('click', () => {
   tezumieMethod.value = DEFAULTS.tezumieMethod;
   tezumieStrength.value = DEFAULTS.tezumieStrength;
   tezumieStrengthNum.value = DEFAULTS.tezumieStrength;
+  pass2Toggle.checked = DEFAULTS.pass2Enabled;
 
   colorCount.value = DEFAULTS.colorCount;
   colorCountNum.value = DEFAULTS.colorCount;
@@ -241,6 +245,9 @@ btnResetAll.addEventListener('click', () => {
   kmeansIterNum.value = DEFAULTS.kmeansIter;
 
   paletteSelect.value = DEFAULTS.palette;
+  showGrid = DEFAULTS.grid;
+  btnToggleGrid.classList.remove('btn-grid-active');
+  btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
   updatePalettePreview();
   updateDimensionsUI();
   triggerPreviewDebounced();
@@ -264,6 +271,8 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
     } else if (param === 'autoOutline') {
       autoOutlineToggle.checked = DEFAULTS.autoOutline;
       autoOutlineColor.value = DEFAULTS.autoOutlineColor;
+    } else if (param === 'pass2') {
+      pass2Toggle.checked = DEFAULTS.pass2Enabled;
     } else if (param === 'snapAlpha') {
       snapAlpha.checked = DEFAULTS.snapAlpha;
     } else if (param === 'tezumie') {
@@ -447,6 +456,8 @@ function applyZoomToCanvas() {
 
   mainCanvas.style.width = `${currentW}px`;
   mainCanvas.style.height = `${currentH}px`;
+  canvasScaler.style.width = `${currentW}px`;
+  canvasScaler.style.height = `${currentH}px`;
 
   const splitPx = Math.round(currentW * splitPosition);
   splitBar.style.left = `${splitPx}px`;
@@ -695,6 +706,14 @@ async function updatePreviewAsync() {
       }
     } else if (palette && palette.length > 0) {
       pipelineTag.textContent = "PixelSnapper";
+      remapToPalette(offCtx, targetW, targetH, palette, snapAlphaChecked);
+    }
+
+    if (currentSession !== previewSessionId) return;
+
+    // STEP 2.5: OPTIONAL 2ND PASS (POST-DITHER RE-SNAP CLUSTER)
+    if (pass2Toggle.checked && palette && palette.length > 0) {
+      pipelineTag.textContent += "+Pass2";
       remapToPalette(offCtx, targetW, targetH, palette, snapAlphaChecked);
     }
 

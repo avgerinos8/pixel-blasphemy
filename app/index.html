@@ -148,6 +148,11 @@
                     <input type="number" id="tezumieStrengthNum" min="0.0" max="1.0" step="0.05" value="0.75" class="num-box">
                   </div>
                   <input type="range" id="tezumieStrength" min="0.0" max="1.0" step="0.05" value="0.75">
+                  
+                  <div class="checkbox-row" style="margin-top: 5px; padding-top: 5px; border-top: 1px solid #1f354d;">
+                    <label><input type="checkbox" id="pass2Toggle"> 2ND PASS (POST-DITHER RE-SNAP)</label>
+                    <button type="button" class="btn-reset-param" data-param="pass2" title="Reset 2nd Pass to Off">&#8634;</button>
+                  </div>
                 </div>
               </div>
 
@@ -232,7 +237,7 @@
               </div>
 
               <!-- GRID TOGGLE BUTTON -->
-              <button class="btn-tool btn-grid-active" id="btnToggleGrid">&#9638; GRID: ON</button>
+              <button class="btn-tool" id="btnToggleGrid">&#9638; GRID: OFF</button>
 
               <!-- EJECT BUTTON -->
               <button class="btn-tool btn-tool-danger" id="btnCloseImage" title="Close / Eject Image">&#10005; EJECT</button>
