@@ -602,12 +602,17 @@ btnCloseImage.addEventListener('click', () => {
   fileInput.value = '';
 });
 
-// DEBOUNCED PREVIEW TRIGGER
-function triggerPreviewDebounced() {
+// DEBOUNCED PREVIEW TRIGGER WITH MULTI-INPUT SETTLING DELAY
+const PREVIEW_DEBOUNCE_MS = 220; // Waits 220ms for rapid slider/stepper/button inputs to settle before running
+
+function triggerPreviewDebounced(delay = PREVIEW_DEBOUNCE_MS) {
   if (previewTimeout) clearTimeout(previewTimeout);
+  if (rawImageElement) {
+    pipelineTag.textContent = "Pending...";
+  }
   previewTimeout = setTimeout(() => {
     updatePreviewAsync();
-  }, 30);
+  }, delay);
 }
 
 // PREVIEW PIPELINE (STRICT CONCURRENCY GUARD & DETERMINISTIC RE-RUN)
@@ -619,6 +624,7 @@ async function updatePreviewAsync() {
     return;
   }
   isUpdatingPreview = true;
+  if (rawImageElement) pipelineTag.textContent = "Generating...";
   const currentSession = ++previewSessionId;
 
   try {
@@ -1015,3 +1021,29 @@ function copyCardPrompt(btn) {
     }, 1500);
   });
 }
+
+
+// STEPPER BUTTONS (- / +) HANDLER
+document.querySelectorAll('.btn-step').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const targetId = btn.dataset.target;
+    const step = parseFloat(btn.dataset.step) || 0;
+    const input = document.getElementById(targetId);
+    if (!input) return;
+
+    let val = parseFloat(input.value) || 0;
+    val += step;
+    const min = parseFloat(input.min !== undefined ? input.min : -Infinity);
+    const max = parseFloat(input.max !== undefined ? input.max : Infinity);
+    if (val < min) val = min;
+    if (val > max) val = max;
+
+    const decimals = (btn.dataset.step.split('.')[1] || '').length;
+    val = parseFloat(val.toFixed(decimals));
+
+    input.value = val;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});

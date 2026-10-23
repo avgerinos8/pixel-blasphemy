@@ -1023,3 +1023,42 @@ html, body {
   color: var(--accent-cyan);
   overflow-x: auto;
 }
+
+
+/* STEPPER CONTROLS (- / +) */
+.stepper-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.btn-step {
+  background: #080c12;
+  border: 1px solid var(--border-color);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: bold;
+  width: 18px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.12s;
+  user-select: none;
+}
+
+.btn-step:hover {
+  background: #192535;
+  border-color: var(--accent-cyan);
+  color: #fff;
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+}
+
+.btn-step:active {
+  background: var(--accent-cyan);
+  color: #000;
+}
