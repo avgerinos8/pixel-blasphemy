@@ -14,12 +14,12 @@
     <header class="app-header">
       <div class="logo">
         <span class="logo-icon">&#9632;</span>
-        <h1>PIXEL<span>FORGE</span> <small>STUDIO v1.0 [FREE LOCAL EDITION]</small></h1>
+        <h1>PIXEL<span>FORGE</span> <small>STUDIO [FREE LOCAL EDITION]</small></h1>
       </div>
       <div class="header-badges">
-        <span class="badge badge-accent">100% OFFLINE</span>
-        <span class="badge">NO AI MIXELS</span>
-        <span class="badge badge-neon">STREETS OF REGEX COMPATIBLE</span>
+        <span class="badge badge-accent">npx serve READY</span>
+        <span class="badge">NON-DESTRUCTIVE PREVIEW</span>
+        <span class="badge badge-neon">STREETS OF REGEX PIPELINE</span>
       </div>
     </header>
 
@@ -29,7 +29,7 @@
       <button class="tab-btn" data-tab="tab-comfy">ComfyUI Dual Pipeline Guide</button>
     </nav>
 
-    <!-- TAB 1: PIXEL SNAPPER -->
+    <!-- TAB 1: PIXEL SNAPPER STUDIO -->
     <main class="tab-content active" id="tab-snapper">
       <div class="workbench">
         <!-- LEFT: CONTROLS PANEL -->
@@ -37,30 +37,39 @@
           <div class="panel-header">
             <h2>PROCESSING CONTROLS</h2>
           </div>
-          
+
+          <!-- LOAD BUTTON IF IMAGE ALREADY LOADED -->
+          <div class="control-group" id="quickLoadGroup" style="display:none;">
+            <button class="btn btn-secondary w-full" id="btnBrowseNew">&#128194; LOAD DIFFERENT IMAGE</button>
+          </div>
+
+          <!-- SCALE DOWNSAMPLE BUTTONS -->
           <div class="control-group">
-            <label for="colorCount">COLOR BUDGET (K-MEANS): <span id="colorCountVal">16</span></label>
+            <label>DOWNSCALE FACTOR (ARBITRARY SIZES SUPPORTED):</label>
+            <div class="scale-btn-group" id="scaleGroup">
+              <button class="scale-btn" data-divisor="1">1x</button>
+              <button class="scale-btn" data-divisor="2">/2</button>
+              <button class="scale-btn" data-divisor="4">/4</button>
+              <button class="scale-btn active" data-divisor="8">/8</button>
+              <button class="scale-btn" data-divisor="16">/16</button>
+            </div>
+            <div class="dim-display" id="dimDisplay">Target: <b id="targetDimText">Waiting for image...</b></div>
+          </div>
+
+          <!-- COLOR BUDGET SLIDER -->
+          <div class="control-group">
+            <label for="colorCount">COLOR BUDGET (K-MEANS): <span id="colorCountVal">16</span> COLORS</label>
             <input type="range" id="colorCount" min="4" max="64" step="4" value="16">
             <div class="ticks"><span>4</span><span>16</span><span>32</span><span>64</span></div>
           </div>
 
-          <div class="control-group">
-            <label for="targetGrid">TARGET GRID SIZE: <span id="targetGridVal">64x64</span></label>
-            <select id="targetGrid">
-              <option value="64" selected>64x64 (Streets of Regex Standard)</option>
-              <option value="32">32x32 (Classic 16-bit)</option>
-              <option value="16">16x16 (Retro 8-bit)</option>
-              <option value="128">128x128 (High-Res Prop)</option>
-              <option value="0">Auto-Detect Implicit Grid</option>
-            </select>
-          </div>
-
+          <!-- PALETTE SELECTOR -->
           <div class="control-group">
             <label for="paletteSelect">COLOR PALETTE PRESET:</label>
             <select id="paletteSelect">
-              <option value="auto" selected>Auto K-Means (Image Optimal)</option>
+              <option value="auto" selected>Auto K-Means (Extract from Image)</option>
               <option value="cyberpunk16">Streets of Regex Cyberpunk (16)</option>
-              <option value="endesga32">Endesga 32 (Industry Standard)</option>
+              <option value="endesga32">Endesga 32 (Indie Standard)</option>
               <option value="db32">DawnBringer 32 (Dark Retro)</option>
               <option value="pico8">Pico-8 (16 Colors)</option>
               <option value="gameboy">Game Boy Classic (4 Shades)</option>
@@ -68,16 +77,20 @@
             <div class="palette-preview" id="palettePreview"></div>
           </div>
 
+          <!-- GRID & ALPHA TOGGLES -->
           <div class="control-group checkbox-group">
             <label><input type="checkbox" id="renderGridLines" checked> Show Pixel Grid Overlay</label>
             <label><input type="checkbox" id="snapAlpha" checked> Clean Alpha Mask (Hard Binary)</label>
           </div>
 
+          <!-- DOWNLOAD ACTION -->
           <div class="action-buttons">
-            <button class="btn btn-primary" id="btnProcess">SNAP & QUANTIZE</button>
-            <button class="btn btn-secondary" id="btnDownload" disabled>DOWNLOAD 64x64 PNG</button>
+            <button class="btn btn-primary" id="btnDownload" disabled>
+              DOWNLOAD PREVIEW <span id="downloadNameLabel"></span>
+            </button>
           </div>
 
+          <!-- BATCH SECTION -->
           <div class="batch-section">
             <div class="panel-header">
               <h3>BATCH FILE QUEUE (<span id="batchCount">0</span>)</h3>
@@ -85,29 +98,60 @@
             <ul class="batch-list" id="batchList">
               <li class="empty-hint">Drop multiple files or a folder to batch process.</li>
             </ul>
-            <button class="btn btn-accent" id="btnProcessBatch" disabled>PROCESS ALL IN QUEUE</button>
+            <button class="btn btn-accent" id="btnProcessBatch" disabled>BATCH PROCESS ALL</button>
           </div>
         </aside>
 
-        <!-- RIGHT: INTERACTIVE VIEWER -->
+        <!-- RIGHT: VIEWER & WORKSPACE -->
         <section class="panel viewer-panel">
+          <!-- TOP WORKSPACE TOOLBAR (VISIBLE WHEN IMAGE LOADED) -->
+          <div class="viewer-toolbar" id="viewerToolbar" style="display:none;">
+            <div class="file-info-badge">
+              <span id="loadedFilename">image.png</span>
+              <span class="dim-badge" id="origDimBadge">0x0</span>
+            </div>
+            
+            <div class="toolbar-actions">
+              <button class="btn-tool" id="btnToggleCrop">&#9986; CROP REGION</button>
+              <div class="crop-controls" id="cropControls" style="display:none;">
+                <button class="btn-tool btn-tool-success" id="btnApplyCrop">&#10003; APPLY</button>
+                <button class="btn-tool btn-tool-danger" id="btnCancelCrop">&#10005; CANCEL</button>
+              </div>
+              <button class="btn-tool btn-tool-danger" id="btnCloseImage" title="Close / Eject Image">&#10005; EJECT IMAGE</button>
+            </div>
+          </div>
+
           <div class="drop-zone" id="dropZone">
             <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
+            
             <div class="drop-prompt" id="dropPrompt">
               <div class="drop-icon">&#8681;</div>
               <p><strong>DROP AI IMAGE OR CLICK TO BROWSE</strong></p>
-              <p><small>Accepts 1024x1024 / 512x512 images from Gemini, Nano-Banana, or ComfyUI</small></p>
+              <p><small>Supports any size (e.g. 500x370, 1024x1024) from Gemini, Nano-Banana, or ComfyUI</small></p>
             </div>
 
             <div class="canvas-wrapper" id="canvasWrapper" style="display:none;">
               <canvas id="mainCanvas"></canvas>
+              
+              <!-- INTERACTIVE SPLIT SLIDER BAR -->
               <div class="split-slider-bar" id="splitBar">
                 <div class="slider-handle">&#8596;</div>
               </div>
+
+              <!-- CROP OVERLAY BOX -->
+              <div class="crop-overlay-box" id="cropOverlay" style="display:none;">
+                <div class="crop-handle nw"></div>
+                <div class="crop-handle ne"></div>
+                <div class="crop-handle sw"></div>
+                <div class="crop-handle se"></div>
+              </div>
+
+              <!-- STATS OVERLAY BAR -->
               <div class="view-stats" id="viewStats">
                 <span>Original: <b id="origRes">-</b></span>
-                <span>Snapped: <b id="snappedRes">-</b></span>
+                <span>Target: <b id="snappedRes">-</b></span>
                 <span>Colors: <b id="activeColors">-</b></span>
+                <span>Split: <b id="splitPercent">50%</b></span>
               </div>
             </div>
           </div>

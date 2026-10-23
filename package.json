@@ -1,0 +1,17 @@
+﻿{
+  "name": "pixel-forge",
+  "version": "1.0.0",
+  "description": "Zero-Mixels AI Pixel Art Pipeline & Studio",
+  "scripts": {
+    "dev": "npx -y serve app -l 8080",
+    "start": "npx -y serve app -l 8080"
+  },
+  "keywords": [
+    "pixel-art",
+    "gamedev",
+    "pixel-snapper",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT"
+}

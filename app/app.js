@@ -1,4 +1,4 @@
-﻿// PixelForge Studio v1.0 - Client Side Implementation
+﻿// PixelForge Studio v1.1 - Non-Destructive Live Preview Engine
 
 const PALETTES = {
   auto: null,
@@ -30,32 +30,53 @@ const PALETTES = {
   ]
 };
 
-let currentOriginalImage = null;
-let currentSnappedCanvas = null;
+// State
+let loadedFilename = "image.png";
+let rawImageElement = null;       // Fresh loaded file image
+let activeWorkingCanvas = null;    // Can be cropped version of raw image
+let currentSnappedCanvas = null;   // Downscaled & snapped preview canvas
+let currentDivisor = 8;
 let splitPosition = 0.5;
+let isCropping = false;
+let cropRect = { x: 0, y: 0, w: 100, h: 100 };
 let batchFiles = [];
 
 // DOM Elements
 const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
 const dropPrompt = document.getElementById('dropPrompt');
+const fileInput = document.getElementById('fileInput');
 const canvasWrapper = document.getElementById('canvasWrapper');
 const mainCanvas = document.getElementById('mainCanvas');
 const splitBar = document.getElementById('splitBar');
+const cropOverlay = document.getElementById('cropOverlay');
 const ctx = mainCanvas.getContext('2d');
 
+const viewerToolbar = document.getElementById('viewerToolbar');
+const loadedFilenameEl = document.getElementById('loadedFilename');
+const origDimBadge = document.getElementById('origDimBadge');
+const btnCloseImage = document.getElementById('btnCloseImage');
+const btnBrowseNew = document.getElementById('btnBrowseNew');
+const quickLoadGroup = document.getElementById('quickLoadGroup');
+
+const btnToggleCrop = document.getElementById('btnToggleCrop');
+const cropControls = document.getElementById('cropControls');
+const btnApplyCrop = document.getElementById('btnApplyCrop');
+const btnCancelCrop = document.getElementById('btnCancelCrop');
+
+const scaleGroup = document.getElementById('scaleGroup');
+const targetDimText = document.getElementById('targetDimText');
 const colorCount = document.getElementById('colorCount');
 const colorCountVal = document.getElementById('colorCountVal');
-const targetGrid = document.getElementById('targetGrid');
 const paletteSelect = document.getElementById('paletteSelect');
 const palettePreview = document.getElementById('palettePreview');
-const btnProcess = document.getElementById('btnProcess');
-const btnDownload = document.getElementById('btnDownload');
 
-// Stats Elements
+const btnDownload = document.getElementById('btnDownload');
+const downloadNameLabel = document.getElementById('downloadNameLabel');
+
 const origRes = document.getElementById('origRes');
 const snappedRes = document.getElementById('snappedRes');
 const activeColors = document.getElementById('activeColors');
+const splitPercent = document.getElementById('splitPercent');
 
 // TABS
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -67,11 +88,18 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-// SLIDERS & PALETTE
-colorCount.addEventListener('input', () => {
-  colorCountVal.textContent = colorCount.value;
+// SCALE BUTTONS (/2, /4, /8, /16, 1x)
+scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    scaleGroup.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentDivisor = parseInt(btn.dataset.divisor) || 1;
+    updateDimensionsUI();
+    updatePreview();
+  });
 });
 
+// PALETTE
 function updatePalettePreview() {
   const p = PALETTES[paletteSelect.value];
   palettePreview.innerHTML = '';
@@ -85,11 +113,27 @@ function updatePalettePreview() {
     palettePreview.appendChild(d);
   });
 }
-paletteSelect.addEventListener('change', updatePalettePreview);
+paletteSelect.addEventListener('change', () => {
+  updatePalettePreview();
+  updatePreview();
+});
 updatePalettePreview();
 
-// FILE DRAG & DROP
-dropZone.addEventListener('click', () => fileInput.click());
+colorCount.addEventListener('input', () => {
+  colorCountVal.textContent = colorCount.value;
+  updatePreview();
+});
+
+document.getElementById('renderGridLines').addEventListener('change', renderSplitView);
+document.getElementById('snapAlpha').addEventListener('change', updatePreview);
+
+// FILE INPUT (TRIGGERED ONLY BY PROMPT OR LOAD BUTTON, NOT BY CANVAS CLICK!)
+dropPrompt.addEventListener('click', (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
+btnBrowseNew.addEventListener('click', () => fileInput.click());
+
 dropZone.addEventListener('dragover', (e) => {
   e.preventDefault();
   dropZone.classList.add('dragover');
@@ -102,6 +146,7 @@ dropZone.addEventListener('drop', (e) => {
     handleFiles(e.dataTransfer.files);
   }
 });
+
 fileInput.addEventListener('change', (e) => {
   if (e.target.files.length > 0) {
     handleFiles(e.target.files);
@@ -131,42 +176,193 @@ function updateBatchList() {
   document.getElementById('btnProcessBatch').disabled = batchFiles.length === 0;
 }
 
+// LOAD IMAGE
 function loadImage(file) {
+  loadedFilename = file.name;
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
     img.onload = () => {
-      currentOriginalImage = img;
+      rawImageElement = img;
+      
+      // Initialize active working canvas with exact original dimensions
+      activeWorkingCanvas = document.createElement('canvas');
+      activeWorkingCanvas.width = img.naturalWidth || img.width;
+      activeWorkingCanvas.height = img.naturalHeight || img.height;
+      const wCtx = activeWorkingCanvas.getContext('2d');
+      wCtx.drawImage(img, 0, 0);
+
+      // UI updates
+      loadedFilenameEl.textContent = loadedFilename;
+      origDimBadge.textContent = `${activeWorkingCanvas.width}x${activeWorkingCanvas.height} px`;
+      
       dropPrompt.style.display = 'none';
+      viewerToolbar.style.display = 'flex';
+      quickLoadGroup.style.display = 'block';
       canvasWrapper.style.display = 'flex';
-      origRes.textContent = `${img.width}x${img.height}`;
-      processSnapping();
+
+      // Auto-choose sensible divisor if image is large
+      const maxDim = Math.max(activeWorkingCanvas.width, activeWorkingCanvas.height);
+      if (maxDim >= 1024) selectDivisor(16);
+      else if (maxDim >= 512) selectDivisor(8);
+      else if (maxDim >= 256) selectDivisor(4);
+      else selectDivisor(1);
+
+      updateDimensionsUI();
+      updatePreview();
     };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }
 
-// PIXEL SNAPPER ALGORITHM (JS / CANVAS)
-function processSnapping() {
-  if (!currentOriginalImage) return;
+function selectDivisor(d) {
+  currentDivisor = d;
+  scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.divisor) === d);
+  });
+}
 
-  const targetSize = parseInt(targetGrid.value) || 64;
+function updateDimensionsUI() {
+  if (!activeWorkingCanvas) return;
+  const w = activeWorkingCanvas.width;
+  const h = activeWorkingCanvas.height;
+  const targetW = Math.max(1, Math.round(w / currentDivisor));
+  const targetH = Math.max(1, Math.round(h / currentDivisor));
+
+  origRes.textContent = `${w}x${h}`;
+  targetDimText.textContent = `${targetW} × ${targetH} px (/${currentDivisor})`;
+  snappedRes.textContent = `${targetW}x${targetH}`;
+
+  // Update download button label with target filename: [name]_sn[sizeX].png
+  const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
+  const downloadName = `${baseName}_sn${targetW}.png`;
+  downloadNameLabel.textContent = `(${downloadName})`;
+  btnDownload.disabled = false;
+}
+
+// CLOSE / EJECT IMAGE
+btnCloseImage.addEventListener('click', () => {
+  rawImageElement = null;
+  activeWorkingCanvas = null;
+  currentSnappedCanvas = null;
+  isCropping = false;
+
+  cropOverlay.style.display = 'none';
+  cropControls.style.display = 'none';
+  btnToggleCrop.style.display = 'inline-block';
+
+  viewerToolbar.style.display = 'none';
+  quickLoadGroup.style.display = 'none';
+  canvasWrapper.style.display = 'none';
+  dropPrompt.style.display = 'block';
+
+  origRes.textContent = '-';
+  snappedRes.textContent = '-';
+  activeColors.textContent = '-';
+  targetDimText.textContent = 'Waiting for image...';
+  downloadNameLabel.textContent = '';
+  btnDownload.disabled = true;
+
+  fileInput.value = '';
+});
+
+// CROP TOOL
+btnToggleCrop.addEventListener('click', () => {
+  if (!activeWorkingCanvas) return;
+  isCropping = true;
+  btnToggleCrop.style.display = 'none';
+  cropControls.style.display = 'flex';
+  splitBar.style.display = 'none';
+
+  // Initialize crop rect to center square (e.g. 70% of smaller dimension)
+  const w = activeWorkingCanvas.width;
+  const h = activeWorkingCanvas.height;
+  const size = Math.round(Math.min(w, h) * 0.75);
+  cropRect = {
+    x: Math.round((w - size) / 2),
+    y: Math.round((h - size) / 2),
+    w: size,
+    h: size
+  };
+
+  renderCropOverlay();
+});
+
+btnCancelCrop.addEventListener('click', () => {
+  isCropping = false;
+  cropOverlay.style.display = 'none';
+  cropControls.style.display = 'none';
+  btnToggleCrop.style.display = 'inline-block';
+  splitBar.style.display = 'block';
+  renderSplitView();
+});
+
+btnApplyCrop.addEventListener('click', () => {
+  if (!activeWorkingCanvas) return;
+  
+  // Extract cropped sub-image
+  const cropped = document.createElement('canvas');
+  cropped.width = cropRect.w;
+  cropped.height = cropRect.h;
+  const cCtx = cropped.getContext('2d');
+  cCtx.drawImage(
+    activeWorkingCanvas,
+    cropRect.x, cropRect.y, cropRect.w, cropRect.h,
+    0, 0, cropRect.w, cropRect.h
+  );
+
+  activeWorkingCanvas = cropped;
+  origDimBadge.textContent = `${cropped.width}x${cropped.height} px`;
+
+  isCropping = false;
+  cropOverlay.style.display = 'none';
+  cropControls.style.display = 'none';
+  btnToggleCrop.style.display = 'inline-block';
+  splitBar.style.display = 'block';
+
+  updateDimensionsUI();
+  updatePreview();
+});
+
+function renderCropOverlay() {
+  if (!isCropping) return;
+  cropOverlay.style.display = 'block';
+
+  // Map image coordinates to canvas on screen
+  const rect = mainCanvas.getBoundingClientRect();
+  const scaleX = rect.width / activeWorkingCanvas.width;
+  const scaleY = rect.height / activeWorkingCanvas.height;
+
+  cropOverlay.style.left = `${mainCanvas.offsetLeft + cropRect.x * scaleX}px`;
+  cropOverlay.style.top = `${mainCanvas.offsetTop + cropRect.y * scaleY}px`;
+  cropOverlay.style.width = `${cropRect.w * scaleX}px`;
+  cropOverlay.style.height = `${cropRect.h * scaleY}px`;
+}
+
+// NON-DESTRUCTIVE LIVE PREVIEW COMPUTATION
+function updatePreview() {
+  if (!activeWorkingCanvas) return;
+
+  const w = activeWorkingCanvas.width;
+  const h = activeWorkingCanvas.height;
+  const targetW = Math.max(1, Math.round(w / currentDivisor));
+  const targetH = Math.max(1, Math.round(h / currentDivisor));
   const kColors = parseInt(colorCount.value) || 16;
   const selectedPalette = PALETTES[paletteSelect.value];
 
-  // Create offscreen canvas for 64x64 reduction
+  // Create offscreen canvas for downsampled target
   const offCanvas = document.createElement('canvas');
-  offCanvas.width = targetSize;
-  offCanvas.height = targetSize;
+  offCanvas.width = targetW;
+  offCanvas.height = targetH;
   const offCtx = offCanvas.getContext('2d');
   offCtx.imageSmoothingEnabled = false;
-  offCtx.drawImage(currentOriginalImage, 0, 0, targetSize, targetSize);
+  offCtx.drawImage(activeWorkingCanvas, 0, 0, targetW, targetH);
 
-  const imgData = offCtx.getImageData(0, 0, targetSize, targetSize);
+  const imgData = offCtx.getImageData(0, 0, targetW, targetH);
   const data = imgData.data;
 
-  // Collect pixel colors
+  // Collect pixels for K-Means
   const pixels = [];
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] > 64) {
@@ -174,24 +370,20 @@ function processSnapping() {
     }
   }
 
-  // K-Means Clustering if no preset palette
   let palette = selectedPalette;
   if (!palette && pixels.length > 0) {
     palette = runKMeans(pixels, kColors, 10);
   }
 
-  // Map every pixel to nearest palette color
+  // Remap
   if (palette && palette.length > 0) {
+    const snapAlpha = document.getElementById('snapAlpha').checked;
     for (let i = 0; i < data.length; i += 4) {
       if (data[i + 3] <= 64) {
-        if (document.getElementById('snapAlpha').checked) {
-          data[i + 3] = 0;
-        }
+        if (snapAlpha) data[i + 3] = 0;
         continue;
       }
-      if (document.getElementById('snapAlpha').checked) {
-        data[i + 3] = 255;
-      }
+      if (snapAlpha) data[i + 3] = 255;
       const nearest = findNearestColor([data[i], data[i + 1], data[i + 2]], palette);
       data[i] = nearest[0];
       data[i + 1] = nearest[1];
@@ -202,10 +394,7 @@ function processSnapping() {
   offCtx.putImageData(imgData, 0, 0);
   currentSnappedCanvas = offCanvas;
 
-  snappedRes.textContent = `${targetSize}x${targetSize}`;
   activeColors.textContent = palette ? palette.length : 'All';
-  btnDownload.disabled = false;
-
   renderSplitView();
 }
 
@@ -272,84 +461,102 @@ function colorDistSq(c1, c2) {
 
 // RENDER SPLIT COMPARISON VIEW
 function renderSplitView() {
-  if (!currentOriginalImage || !currentSnappedCanvas) return;
+  if (!activeWorkingCanvas || !currentSnappedCanvas) return;
 
-  const displaySize = 512;
-  mainCanvas.width = displaySize;
-  mainCanvas.height = displaySize;
+  const displayW = 512;
+  const aspect = activeWorkingCanvas.height / activeWorkingCanvas.width;
+  const displayH = Math.round(displayW * aspect);
 
-  const splitX = Math.round(displaySize * splitPosition);
-  splitBar.style.left = `${splitX}px`;
+  mainCanvas.width = displayW;
+  mainCanvas.height = displayH;
 
-  ctx.clearRect(0, 0, displaySize, displaySize);
+  const splitX = Math.round(displayW * splitPosition);
+  splitBar.style.left = `${mainCanvas.offsetLeft + splitX}px`;
+  splitBar.style.top = `${mainCanvas.offsetTop}px`;
+  splitBar.style.height = `${displayH}px`;
+  splitPercent.textContent = `${Math.round(splitPosition * 100)}%`;
+
+  ctx.clearRect(0, 0, displayW, displayH);
 
   // Left Side: Original
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, splitX, displaySize);
+  ctx.rect(0, 0, splitX, displayH);
   ctx.clip();
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(currentOriginalImage, 0, 0, displaySize, displaySize);
+  ctx.drawImage(activeWorkingCanvas, 0, 0, displayW, displayH);
   ctx.restore();
 
-  // Right Side: Snapped 64x64 scaled up
+  // Right Side: Snapped scaled up with nearest neighbor
   ctx.save();
   ctx.beginPath();
-  ctx.rect(splitX, 0, displaySize - splitX, displaySize);
+  ctx.rect(splitX, 0, displayW - splitX, displayH);
   ctx.clip();
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(currentSnappedCanvas, 0, 0, displaySize, displaySize);
+  ctx.drawImage(currentSnappedCanvas, 0, 0, displayW, displayH);
 
-  // Optional: Pixel Grid Overlay
+  // Pixel Grid Lines (on snapped side)
   if (document.getElementById('renderGridLines').checked) {
-    const targetSize = parseInt(targetGrid.value) || 64;
-    const step = displaySize / targetSize;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    const targetW = currentSnappedCanvas.width;
+    const targetH = currentSnappedCanvas.height;
+    const stepX = displayW / targetW;
+    const stepY = displayH / targetH;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
     ctx.lineWidth = 1;
-    for (let x = splitX; x < displaySize; x += step) {
+    for (let x = splitX; x < displayW; x += stepX) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, displaySize);
+      ctx.lineTo(x, displayH);
       ctx.stroke();
     }
-    for (let y = 0; y < displaySize; y += step) {
+    for (let y = 0; y < displayH; y += stepY) {
       ctx.beginPath();
       ctx.moveTo(splitX, y);
-      ctx.lineTo(displaySize, y);
+      ctx.lineTo(displayW, y);
       ctx.stroke();
     }
   }
   ctx.restore();
+
+  if (isCropping) renderCropOverlay();
 }
 
-// SLIDER DRAG INTERACTION
-let isDragging = false;
+// SPLIT BAR DRAGGING (INTERACTIVE)
+let isDraggingSplit = false;
 canvasWrapper.addEventListener('mousedown', (e) => {
-  isDragging = true;
-  updateSplit(e);
+  if (isCropping) return;
+  isDraggingSplit = true;
+  updateSplitFromMouse(e);
 });
-window.addEventListener('mousemove', (e) => {
-  if (!isDragging) return;
-  updateSplit(e);
-});
-window.addEventListener('mouseup', () => isDragging = false);
 
-function updateSplit(e) {
+window.addEventListener('mousemove', (e) => {
+  if (isDraggingSplit) {
+    updateSplitFromMouse(e);
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  isDraggingSplit = false;
+});
+
+function updateSplitFromMouse(e) {
   const rect = mainCanvas.getBoundingClientRect();
   const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
   splitPosition = x / rect.width;
   renderSplitView();
 }
 
-// CONTROLS INTERACTION
-btnProcess.addEventListener('click', processSnapping);
-document.getElementById('renderGridLines').addEventListener('change', renderSplitView);
-
-// DOWNLOAD
+// DOWNLOAD FINAL ASSET: [filename]_sn[sizeX].png
 btnDownload.addEventListener('click', () => {
-  if (!currentSnappedCanvas) return;
+  if (!currentSnappedCanvas || !activeWorkingCanvas) return;
+
+  const targetW = currentSnappedCanvas.width;
+  const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
+  const finalFilename = `${baseName}_sn${targetW}.png`;
+
   const link = document.createElement('a');
-  link.download = 'pixel_snapped_64x64.png';
+  link.download = finalFilename;
   link.href = currentSnappedCanvas.toDataURL('image/png');
   link.click();
 });
