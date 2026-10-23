@@ -58,13 +58,13 @@
                 <div class="label-row">
                   <label>DOWNSCALE:</label>
                   <span class="dim-badge" id="targetDimText">Waiting...</span>
-                  <button type="button" class="btn-reset-param" data-param="divisor" title="Reset Downscale to /8">&#8634;</button>
+                  <button type="button" class="btn-reset-param" data-param="divisor" title="Reset Downscale to 1x">&#8634;</button>
                 </div>
                 <div class="scale-btn-group" id="scaleGroup">
-                  <button class="scale-btn" data-divisor="1">1x</button>
+                  <button class="scale-btn active" data-divisor="1">1x</button>
                   <button class="scale-btn" data-divisor="2">/2</button>
                   <button class="scale-btn" data-divisor="4">/4</button>
-                  <button class="scale-btn active" data-divisor="8">/8</button>
+                  <button class="scale-btn" data-divisor="8">/8</button>
                   <button class="scale-btn" data-divisor="16">/16</button>
                 </div>
               </div>
@@ -259,13 +259,11 @@
               <div class="viewport-scroller" id="viewportScroller">
                 <div class="canvas-scaler" id="canvasScaler">
                   <canvas id="mainCanvas"></canvas>
-                  
-                  <!-- INTERACTIVE SPLIT SLIDER BAR -->
-                  <div class="split-slider-bar" id="splitBar">
-                    <div class="slider-handle">&#8596;</div>
-                  </div>
                 </div>
               </div>
+
+              <!-- INTERACTIVE SPLIT SLIDER BAR (FULL PANEL HEIGHT) -->
+              <div class="split-slider-bar" id="splitBar" style="display:none;"></div>
 
               <!-- STATS OVERLAY BAR -->
               <div class="view-stats" id="viewStats">

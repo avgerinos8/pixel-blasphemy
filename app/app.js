@@ -31,7 +31,7 @@ const PALETTES = {
 };
 
 const DEFAULTS = {
-  divisor: 8,
+  divisor: 1,
   outlineWeight: 1.5,
   edgeSensitivity: 0.5,
   autoOutline: false,
@@ -52,7 +52,7 @@ const DEFAULTS = {
 let loadedFilename = "image.png";
 let rawImageElement = null;
 let currentSnappedCanvas = null;
-let currentDivisor = 8;
+let currentDivisor = 1;
 let splitPosition = 0.5;
 let zoomPercent = 100;
 let showGrid = false;
@@ -464,9 +464,7 @@ function applyZoomToCanvas() {
   canvasScaler.style.width = `${currentW}px`;
   canvasScaler.style.height = `${currentH}px`;
 
-  const splitPx = Math.round(currentW * splitPosition);
-  splitBar.style.left = `${splitPx}px`;
-  splitBar.style.height = `${currentH}px`;
+  updateSplitBarPosition();
 }
 
 // GRID TOGGLE
@@ -543,11 +541,7 @@ function loadImage(file) {
       viewerToolbar.style.display = 'flex';
       canvasWrapper.style.display = 'flex';
 
-      const maxDim = Math.max(w, h);
-      if (maxDim >= 1024) selectDivisor(16);
-      else if (maxDim >= 512) selectDivisor(8);
-      else if (maxDim >= 256) selectDivisor(4);
-      else selectDivisor(1);
+      selectDivisor(currentDivisor || 1);
 
       updateDimensionsUI();
 
@@ -893,6 +887,33 @@ function colorDistSq(c1, c2) {
   return dr * dr + dg * dg + db * db;
 }
 
+// UPDATE SPLIT BAR (FULL VIEWPORT PANEL HEIGHT & <20px HIDE GUARD)
+function updateSplitBarPosition() {
+  if (!rawImageElement || !mainCanvas || !canvasWrapper) return;
+
+  const baseW = rawImageElement.naturalWidth || rawImageElement.width;
+  const baseH = rawImageElement.naturalHeight || rawImageElement.height;
+  const currentW = Math.round(baseW * (zoomPercent / 100));
+  const currentH = Math.round(baseH * (zoomPercent / 100));
+
+  // If the image or rendered sprite is under 20px, do not show the bar right there
+  if (baseW < 20 || baseH < 20 || currentW < 20 || currentH < 20) {
+    splitBar.style.display = 'none';
+    return;
+  }
+  splitBar.style.display = 'block';
+
+  const canvasRect = mainCanvas.getBoundingClientRect();
+  const wrapperRect = canvasWrapper.getBoundingClientRect();
+
+  // Screen X position of the split divider across the full viewport panel
+  const splitScreenX = canvasRect.left + (splitPosition * canvasRect.width) - wrapperRect.left;
+  splitBar.style.left = `${Math.round(splitScreenX)}px`;
+  splitBar.style.top = '0px';
+  splitBar.style.bottom = '0px';
+  splitBar.style.height = '100%';
+}
+
 // RENDER SPLIT VIEW
 function renderSplitView() {
   if (!rawImageElement || !currentSnappedCanvas) return;
@@ -904,6 +925,21 @@ function renderSplitView() {
   mainCanvas.height = h;
 
   applyZoomToCanvas();
+
+  const currentW = Math.round(w * (zoomPercent / 100));
+  const currentH = Math.round(h * (zoomPercent / 100));
+  const isUnder20 = (w < 20 || h < 20 || currentW < 20 || currentH < 20);
+
+  if (isUnder20) {
+    splitPercent.textContent = '100%';
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(currentSnappedCanvas, 0, 0, w, h);
+    ctx.restore();
+    updateSplitBarPosition();
+    return;
+  }
 
   const splitX = Math.round(w * splitPosition);
   splitPercent.textContent = `${Math.round(splitPosition * 100)}%`;
@@ -950,14 +986,20 @@ function renderSplitView() {
     }
   }
   ctx.restore();
+  updateSplitBarPosition();
 }
 
 // SPLIT BAR DRAG
 let isDraggingSplit = false;
-canvasScaler.addEventListener('mousedown', (e) => {
+
+function startSplitDrag(e) {
+  if (e.button !== 0) return; // Only left-click
   isDraggingSplit = true;
   updateSplitFromMouse(e);
-});
+}
+
+splitBar.addEventListener('mousedown', startSplitDrag);
+canvasScaler.addEventListener('mousedown', startSplitDrag);
 
 window.addEventListener('mousemove', (e) => {
   if (isDraggingSplit) {
@@ -965,15 +1007,20 @@ window.addEventListener('mousemove', (e) => {
   }
 });
 
-window.addEventListener('mouseup', () => {
-  isDraggingSplit = false;
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) {
+    isDraggingSplit = false;
+  }
 });
 
 function updateSplitFromMouse(e) {
+  if (!mainCanvas) return;
   const rect = mainCanvas.getBoundingClientRect();
+  if (rect.width === 0) return;
   const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
   splitPosition = x / rect.width;
   renderSplitView();
+  updateSplitBarPosition();
 }
 
 // DOWNLOAD ASSET: [filename]_sn[sizeX].png
@@ -1081,16 +1128,17 @@ viewportScroller.addEventListener('wheel', (e) => {
     viewportScroller.scrollLeft = (prevScrollX + mouseX) * (newW / prevW) - mouseX;
     viewportScroller.scrollTop = (prevScrollY + mouseY) * (newH / prevH) - mouseY;
   }
+  updateSplitBarPosition();
 }, { passive: false });
 
-// MIDDLE CLICK HOLD + DRAG PAN
+// MIDDLE CLICK HOLD + DRAG PAN (SUPPORT ON VIEWPORT & CANVAS WRAPPER)
 let isPanning = false;
 let panStartX = 0;
 let panStartY = 0;
 let scrollStartX = 0;
 let scrollStartY = 0;
 
-viewportScroller.addEventListener('mousedown', (e) => {
+function startMiddlePan(e) {
   if (e.button === 1) { // Middle click button
     e.preventDefault();
     isPanning = true;
@@ -1099,8 +1147,12 @@ viewportScroller.addEventListener('mousedown', (e) => {
     scrollStartX = viewportScroller.scrollLeft;
     scrollStartY = viewportScroller.scrollTop;
     viewportScroller.style.cursor = 'grabbing';
+    canvasWrapper.style.cursor = 'grabbing';
   }
-});
+}
+
+viewportScroller.addEventListener('mousedown', startMiddlePan);
+canvasWrapper.addEventListener('mousedown', startMiddlePan);
 
 window.addEventListener('mousemove', (e) => {
   if (isPanning) {
@@ -1109,6 +1161,7 @@ window.addEventListener('mousemove', (e) => {
     const dy = e.clientY - panStartY;
     viewportScroller.scrollLeft = scrollStartX - dx;
     viewportScroller.scrollTop = scrollStartY - dy;
+    updateSplitBarPosition();
   }
 });
 
@@ -1116,12 +1169,19 @@ window.addEventListener('mouseup', (e) => {
   if (e.button === 1 && isPanning) {
     isPanning = false;
     viewportScroller.style.cursor = '';
+    canvasWrapper.style.cursor = '';
   }
 });
 
 viewportScroller.addEventListener('auxclick', (e) => {
   if (e.button === 1) e.preventDefault();
 });
+canvasWrapper.addEventListener('auxclick', (e) => {
+  if (e.button === 1) e.preventDefault();
+});
+
+viewportScroller.addEventListener('scroll', updateSplitBarPosition);
+window.addEventListener('resize', updateSplitBarPosition);
 
 // CTRL+ / CTRL- / CTRL+0 KEYBOARD ZOOM OVERRIDE
 window.addEventListener('keydown', (e) => {
