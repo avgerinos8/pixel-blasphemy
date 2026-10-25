@@ -381,7 +381,7 @@ html, body {
 /* SCALE BUTTON GROUP */
 .scale-btn-group {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 3px;
 }
 
@@ -397,6 +397,10 @@ html, body {
   transition: all 0.15s;
 }
 
+.scale-btn[data-divisor="custom"] {
+  grid-column: span 2;
+}
+
 .scale-btn:hover {
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
@@ -407,6 +411,78 @@ html, body {
   border-color: var(--accent-cyan);
   color: #000;
   box-shadow: 0 0 6px rgba(0,240,255,0.4);
+}
+
+/* CUSTOM SCALE PANEL & CHIPS */
+.custom-scale-panel {
+  background: #070a0f;
+  border: 1px solid #1a2736;
+  border-radius: 2px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.custom-tab-btn {
+  background: #080c14;
+  border: 1px solid #1a2736;
+  color: var(--text-dim);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: bold;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.custom-tab-btn:hover {
+  color: var(--text-main);
+  border-color: #2b3d52;
+}
+
+.custom-tab-btn.active {
+  background: #101c2a;
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: inset 0 0 6px rgba(0, 240, 255, 0.15);
+}
+
+.chip-preset {
+  flex: 1;
+  background: #0a1018;
+  border: 1px solid #1e2c3e;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: bold;
+  padding: 3px 2px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-radius: 2px;
+}
+
+.chip-preset:hover {
+  background: #142030;
+  color: var(--accent-yellow);
+  border-color: var(--accent-yellow);
+}
+
+.control-box.is-inactive {
+  opacity: 0.42;
+  transition: opacity 0.2s ease;
+}
+
+.control-box.is-inactive select,
+.control-box.is-inactive input {
+  cursor: not-allowed !important;
+}
+
+.control-box.is-inactive .scale-stat-badge {
+  border-color: #1a2533;
+  color: var(--text-dim);
 }
 
 .dim-badge {

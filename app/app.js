@@ -32,7 +32,12 @@ const PALETTES = {
 
 const DEFAULTS = {
   engine: 'snapper',
-  divisor: 'auto',
+  divisor: 1,
+  customScaleMode: 'factor',
+  customFactor: 5.0,
+  customTargetW: 64,
+  customTargetH: 64,
+  customKeepAspect: true,
   outlineWeight: 1.5,
   edgeSensitivity: 0.5,
   autoOutline: false,
@@ -72,7 +77,12 @@ let currentSnappedCanvas = null;
 let currentActivePalette = null;
 let rawOffCanvas = document.createElement('canvas');
 let rawOffCtx = rawOffCanvas.getContext('2d', { willReadFrequently: true });
-let currentDivisor = 'auto'; // 'auto' | 1 | 2 | 4 | 8 | 16
+let currentDivisor = 1; // 1 | 'auto' | 'custom' | 2 | 4 | 8 | 16
+let customScaleMode = 'factor'; // 'factor' | 'size'
+let customFactorVal = 5.0;
+let customTargetWVal = 64;
+let customTargetHVal = 64;
+let customKeepAspectVal = true;
 let detectedScale = 1;
 let detectedGrid = null;
 let splitPosition = 0.5;
@@ -81,6 +91,7 @@ let showGrid = false;
 let batchFiles = [];
 
 // Concurrency & Session Management
+const PREVIEW_DEBOUNCE_MS = 220; // Multi-input debounce delay (ms)
 let previewSessionId = 0;
 let isUpdatingPreview = false;
 let needsAnotherUpdate = false;
@@ -130,6 +141,25 @@ const btnToggleGrid = document.getElementById('btnToggleGrid');
 // Pixel Snapper Controls
 const scaleGroup = document.getElementById('scaleGroup');
 const targetDimText = document.getElementById('targetDimText');
+const snapperCustomPanel = document.getElementById('snapperCustomPanel');
+const snapperCustomModeFactor = document.getElementById('snapperCustomModeFactor');
+const snapperCustomModeSize = document.getElementById('snapperCustomModeSize');
+const snapperCustomFactorSection = document.getElementById('snapperCustomFactorSection');
+const snapperCustomFactorNum = document.getElementById('snapperCustomFactorNum');
+const snapperCustomSizeSection = document.getElementById('snapperCustomSizeSection');
+const snapperCustomTargetW = document.getElementById('snapperCustomTargetW');
+const snapperCustomTargetH = document.getElementById('snapperCustomTargetH');
+const snapperCustomKeepAspect = document.getElementById('snapperCustomKeepAspect');
+const snapperCustomDivCalc = document.getElementById('snapperCustomDivCalc');
+
+const snapperDetectBox = document.getElementById('snapperDetectBox');
+const snapperDetectMethod = document.getElementById('snapperDetectMethod');
+const snapperWasmBadge = document.getElementById('snapperWasmBadge');
+const snapperScaleStatBadge = document.getElementById('snapperScaleStatBadge');
+const snapperScaleStatText = document.getElementById('snapperScaleStatText');
+const snapperManualScaleRow = document.getElementById('snapperManualScaleRow');
+const snapperManualScale = document.getElementById('snapperManualScale');
+
 const outlineWeight = document.getElementById('outlineWeight');
 const outlineWeightNum = document.getElementById('outlineWeightNum');
 const edgeSensitivity = document.getElementById('edgeSensitivity');
@@ -176,6 +206,18 @@ let pickedEyedropperColors = [];
 // Unfake.js Controls DOM
 const unfakeScaleGroup = document.getElementById('unfakeScaleGroup');
 const unfakeTargetDimText = document.getElementById('unfakeTargetDimText');
+const unfakeCustomPanel = document.getElementById('unfakeCustomPanel');
+const unfakeCustomModeFactor = document.getElementById('unfakeCustomModeFactor');
+const unfakeCustomModeSize = document.getElementById('unfakeCustomModeSize');
+const unfakeCustomFactorSection = document.getElementById('unfakeCustomFactorSection');
+const unfakeCustomFactorNum = document.getElementById('unfakeCustomFactorNum');
+const unfakeCustomSizeSection = document.getElementById('unfakeCustomSizeSection');
+const unfakeCustomTargetW = document.getElementById('unfakeCustomTargetW');
+const unfakeCustomTargetH = document.getElementById('unfakeCustomTargetH');
+const unfakeCustomKeepAspect = document.getElementById('unfakeCustomKeepAspect');
+const unfakeCustomDivCalc = document.getElementById('unfakeCustomDivCalc');
+
+const unfakeDetectBox = document.getElementById('unfakeDetectBox');
 const unfakeDetectMethod = document.getElementById('unfakeDetectMethod');
 const unfakeWasmBadge = document.getElementById('unfakeWasmBadge');
 const unfakeScaleStatBadge = document.getElementById('unfakeScaleStatBadge');
@@ -309,27 +351,128 @@ function setEngine(engine) {
 btnEngineSnapper.addEventListener('click', () => setEngine('snapper'));
 btnEngineUnfake.addEventListener('click', () => setEngine('unfake'));
 
-// SCALE SELECTION & SYNC LOGIC (AUTO / 1x / /2 / /4 / /8 / /16)
+// SCALE SELECTION, SYNC & CUSTOM DOWNSCALE LOGIC (AUTO / 1x / /2 / /4 / /8 / /16 / /CUSTOM)
 function getEffectiveDivisor() {
   if (currentDivisor === 'auto') {
     return detectedScale > 0 ? detectedScale : 1;
   }
+  if (currentDivisor === 'custom') {
+    if (customScaleMode === 'factor') {
+      const f = parseFloat(customFactorVal) || 1;
+      return f > 0 ? f : 1;
+    } else {
+      if (!rawImageElement) return 1;
+      const w = rawImageElement.naturalWidth || rawImageElement.width;
+      const tw = Math.max(1, parseInt(customTargetWVal) || 64);
+      const div = w / tw;
+      return div > 0 ? div : 1;
+    }
+  }
   return parseFloat(currentDivisor) || 1;
+}
+
+function updateCustomCalculatedDiv() {
+  const eff = getEffectiveDivisor();
+  const effStr = Number.isInteger(eff) ? `${eff}x` : `${eff.toFixed(2)}x`;
+  const text = `Effective: /${effStr}`;
+  if (snapperCustomDivCalc) snapperCustomDivCalc.textContent = text;
+  if (unfakeCustomDivCalc) unfakeCustomDivCalc.textContent = text;
+}
+
+function setCustomScaleMode(mode) {
+  customScaleMode = mode;
+  [snapperCustomModeFactor, unfakeCustomModeFactor].forEach(btn => {
+    if (btn) btn.classList.toggle('active', mode === 'factor');
+  });
+  [snapperCustomModeSize, unfakeCustomModeSize].forEach(btn => {
+    if (btn) btn.classList.toggle('active', mode === 'size');
+  });
+
+  [snapperCustomFactorSection, unfakeCustomFactorSection].forEach(sec => {
+    if (sec) sec.style.display = mode === 'factor' ? 'block' : 'none';
+  });
+  [snapperCustomSizeSection, unfakeCustomSizeSection].forEach(sec => {
+    if (sec) sec.style.display = mode === 'size' ? 'block' : 'none';
+  });
+
+  updateCustomCalculatedDiv();
+  updateDimensionsUI();
+  triggerPreviewDebounced();
+}
+
+function updateScaleDetectorState() {
+  const isAuto = currentDivisor === 'auto';
+
+  // Toggle inactive class and disabled on boxes & selects
+  [snapperDetectBox, unfakeDetectBox].forEach(box => {
+    if (!box) return;
+    box.classList.toggle('is-inactive', !isAuto);
+  });
+
+  [snapperDetectMethod, unfakeDetectMethod].forEach(sel => {
+    if (!sel) return;
+    sel.disabled = !isAuto;
+    sel.title = isAuto ? "Select scale detection algorithm" : "Select AUTO in Downscale to enable Scale Detector";
+  });
+
+  [snapperManualScale, unfakeManualScale].forEach(inp => {
+    if (!inp) return;
+    inp.disabled = !isAuto;
+  });
+
+  if (!isAuto) {
+    if (snapperScaleStatText) snapperScaleStatText.textContent = "Inactive (Select AUTO to enable)";
+    if (unfakeScaleStatText) unfakeScaleStatText.textContent = "Inactive (Select AUTO to enable)";
+  } else {
+    if (detectedScale > 1) {
+      const scaleDesc = Number.isInteger(detectedScale) ? `${detectedScale}x` : `${detectedScale.toFixed(2)}x`;
+      const text = `Auto: /${scaleDesc}`;
+      if (snapperScaleStatText) snapperScaleStatText.textContent = text;
+      if (unfakeScaleStatText) unfakeScaleStatText.textContent = text;
+    } else if (rawImageElement) {
+      if (snapperScaleStatText) snapperScaleStatText.textContent = "Analyzing scale...";
+      if (unfakeScaleStatText) unfakeScaleStatText.textContent = "Analyzing scale...";
+    } else {
+      if (snapperScaleStatText) snapperScaleStatText.textContent = "Waiting for image...";
+      if (unfakeScaleStatText) unfakeScaleStatText.textContent = "Waiting for image...";
+    }
+  }
+
+  // Update WASM badges
+  if (window.UnfakeEngine) {
+    const isWasm = window.UnfakeEngine.isWasmActive();
+    [snapperWasmBadge, unfakeWasmBadge].forEach(badge => {
+      if (!badge) return;
+      badge.textContent = isWasm ? 'RUST WASM' : 'PURE JS';
+      badge.style.color = isWasm ? 'var(--accent-green)' : 'var(--accent-yellow)';
+    });
+  }
 }
 
 function selectDivisor(d) {
   currentDivisor = d;
+
   [scaleGroup, unfakeScaleGroup].forEach(group => {
     if (!group) return;
     group.querySelectorAll('.scale-btn').forEach(btn => {
       const btnDiv = btn.dataset.divisor;
       if (d === 'auto') {
         btn.classList.toggle('active', btnDiv === 'auto');
+      } else if (d === 'custom') {
+        btn.classList.toggle('active', btnDiv === 'custom');
       } else {
         btn.classList.toggle('active', btnDiv == d);
       }
     });
   });
+
+  // Toggle Custom Panels
+  const isCustom = d === 'custom';
+  if (snapperCustomPanel) snapperCustomPanel.style.display = isCustom ? 'block' : 'none';
+  if (unfakeCustomPanel) unfakeCustomPanel.style.display = isCustom ? 'block' : 'none';
+
+  updateScaleDetectorState();
+  updateCustomCalculatedDiv();
 
   const eff = getEffectiveDivisor();
   const effStr = Number.isInteger(eff) ? `${eff}` : eff.toFixed(2);
@@ -340,29 +483,160 @@ function selectDivisor(d) {
 [scaleGroup, unfakeScaleGroup].forEach(group => {
   if (!group) return;
   group.querySelectorAll('.scale-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const val = btn.dataset.divisor;
-      selectDivisor(val === 'auto' ? 'auto' : (parseInt(val) || 1));
+      const targetDiv = val === 'auto' ? 'auto' : (val === 'custom' ? 'custom' : (parseInt(val) || 1));
+      selectDivisor(targetDiv);
+      if (targetDiv === 'auto' && rawImageElement) {
+        await runScaleDetection();
+      }
       triggerPreviewDebounced();
     });
   });
 });
 
-// UNFAKE.JS OPTIONS HANDLERS
-unfakeDetectMethod.addEventListener('change', async () => {
-  unfakeManualScaleRow.style.display = unfakeDetectMethod.value === 'manual' ? 'block' : 'none';
-  await runScaleDetection();
-  triggerPreviewDebounced();
-});
+// SCALE DETECTOR METHOD & MANUAL SCALE SYNC
+function onDetectMethodChange(val) {
+  if (snapperDetectMethod) snapperDetectMethod.value = val;
+  if (unfakeDetectMethod) unfakeDetectMethod.value = val;
 
-unfakeManualScale.addEventListener('input', () => {
-  if (unfakeDetectMethod.value === 'manual') {
-    detectedScale = parseFloat(unfakeManualScale.value) || 1;
-    unfakeScaleStatText.textContent = `Manual: ${detectedScale}x`;
+  const isManual = val === 'manual';
+  if (snapperManualScaleRow) snapperManualScaleRow.style.display = isManual ? 'block' : 'none';
+  if (unfakeManualScaleRow) unfakeManualScaleRow.style.display = isManual ? 'block' : 'none';
+
+  if (currentDivisor === 'auto') {
+    runScaleDetection().then(() => triggerPreviewDebounced());
+  }
+}
+
+if (snapperDetectMethod) {
+  snapperDetectMethod.addEventListener('change', () => onDetectMethodChange(snapperDetectMethod.value));
+}
+if (unfakeDetectMethod) {
+  unfakeDetectMethod.addEventListener('change', () => onDetectMethodChange(unfakeDetectMethod.value));
+}
+
+function onManualScaleChange(val) {
+  const num = Math.max(0.1, parseFloat(val) || 1);
+  detectedScale = num;
+  if (snapperManualScale) snapperManualScale.value = num;
+  if (unfakeManualScale) unfakeManualScale.value = num;
+
+  const desc = `Manual: ${num}x`;
+  if (snapperScaleStatText) snapperScaleStatText.textContent = desc;
+  if (unfakeScaleStatText) unfakeScaleStatText.textContent = desc;
+
+  if (currentDivisor === 'auto') {
     updateDimensionsUI();
     triggerPreviewDebounced();
   }
+}
+
+if (snapperManualScale) {
+  snapperManualScale.addEventListener('input', () => onManualScaleChange(snapperManualScale.value));
+}
+if (unfakeManualScale) {
+  unfakeManualScale.addEventListener('input', () => onManualScaleChange(unfakeManualScale.value));
+}
+
+// CUSTOM DOWNSCALE CONTROLS LISTENERS
+[snapperCustomModeFactor, unfakeCustomModeFactor].forEach(btn => {
+  if (btn) btn.addEventListener('click', () => setCustomScaleMode('factor'));
 });
+[snapperCustomModeSize, unfakeCustomModeSize].forEach(btn => {
+  if (btn) btn.addEventListener('click', () => setCustomScaleMode('size'));
+});
+
+function onCustomFactorChange(val) {
+  customFactorVal = Math.max(0.01, parseFloat(val) || 1);
+  if (snapperCustomFactorNum) snapperCustomFactorNum.value = customFactorVal;
+  if (unfakeCustomFactorNum) unfakeCustomFactorNum.value = customFactorVal;
+  updateCustomCalculatedDiv();
+  updateDimensionsUI();
+  triggerPreviewDebounced();
+}
+
+if (snapperCustomFactorNum) {
+  snapperCustomFactorNum.addEventListener('input', () => onCustomFactorChange(snapperCustomFactorNum.value));
+}
+if (unfakeCustomFactorNum) {
+  unfakeCustomFactorNum.addEventListener('input', () => onCustomFactorChange(unfakeCustomFactorNum.value));
+}
+
+document.querySelectorAll('.btn-factor-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const factor = parseFloat(chip.dataset.val) || 5;
+    onCustomFactorChange(factor);
+  });
+});
+
+function onCustomTargetWChange(val) {
+  customTargetWVal = Math.max(1, parseInt(val) || 64);
+  if (customKeepAspectVal && rawImageElement) {
+    const origW = rawImageElement.naturalWidth || rawImageElement.width;
+    const origH = rawImageElement.naturalHeight || rawImageElement.height;
+    customTargetHVal = Math.max(1, Math.round(customTargetWVal * (origH / origW)));
+  }
+  syncTargetSizeInputs();
+  updateCustomCalculatedDiv();
+  updateDimensionsUI();
+  triggerPreviewDebounced();
+}
+
+function onCustomTargetHChange(val) {
+  customTargetHVal = Math.max(1, parseInt(val) || 64);
+  if (customKeepAspectVal && rawImageElement) {
+    const origW = rawImageElement.naturalWidth || rawImageElement.width;
+    const origH = rawImageElement.naturalHeight || rawImageElement.height;
+    customTargetWVal = Math.max(1, Math.round(customTargetHVal * (origW / origH)));
+  }
+  syncTargetSizeInputs();
+  updateCustomCalculatedDiv();
+  updateDimensionsUI();
+  triggerPreviewDebounced();
+}
+
+function syncTargetSizeInputs() {
+  if (snapperCustomTargetW) snapperCustomTargetW.value = customTargetWVal;
+  if (unfakeCustomTargetW) unfakeCustomTargetW.value = customTargetWVal;
+  if (snapperCustomTargetH) snapperCustomTargetH.value = customTargetHVal;
+  if (unfakeCustomTargetH) unfakeCustomTargetH.value = customTargetHVal;
+}
+
+if (snapperCustomTargetW) snapperCustomTargetW.addEventListener('input', () => onCustomTargetWChange(snapperCustomTargetW.value));
+if (unfakeCustomTargetW) unfakeCustomTargetW.addEventListener('input', () => onCustomTargetWChange(unfakeCustomTargetW.value));
+
+if (snapperCustomTargetH) snapperCustomTargetH.addEventListener('input', () => onCustomTargetHChange(snapperCustomTargetH.value));
+if (unfakeCustomTargetH) unfakeCustomTargetH.addEventListener('input', () => onCustomTargetHChange(unfakeCustomTargetH.value));
+
+[snapperCustomKeepAspect, unfakeCustomKeepAspect].forEach(chk => {
+  if (!chk) return;
+  chk.addEventListener('change', () => {
+    customKeepAspectVal = chk.checked;
+    if (snapperCustomKeepAspect) snapperCustomKeepAspect.checked = customKeepAspectVal;
+    if (unfakeCustomKeepAspect) unfakeCustomKeepAspect.checked = customKeepAspectVal;
+    if (customKeepAspectVal && rawImageElement) {
+      onCustomTargetWChange(customTargetWVal);
+    }
+  });
+});
+
+document.querySelectorAll('.btn-size-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const w = parseInt(chip.dataset.w) || 64;
+    const h = parseInt(chip.dataset.h) || 64;
+    customTargetWVal = w;
+    customTargetHVal = h;
+    syncTargetSizeInputs();
+    updateCustomCalculatedDiv();
+    updateDimensionsUI();
+    triggerPreviewDebounced();
+  });
+});
+
+// Initial Downscale & Custom Scale Setup
+selectDivisor(DEFAULTS.divisor);
+setCustomScaleMode(DEFAULTS.customScaleMode);
 
 unfakeSnapGrid.addEventListener('change', () => triggerPreviewDebounced());
 unfakeElasticGrid.addEventListener('change', () => triggerPreviewDebounced());
@@ -379,13 +653,28 @@ unfakeAutoColors.addEventListener('change', () => {
 });
 
 // TOP ACTION BUTTONS: OPEN MAIN & OPEN PALETTE
-btnOpenMainImage.addEventListener('click', () => fileInput.click());
-btnOpenPaletteImage.addEventListener('click', () => paletteFileInput.click());
+btnOpenMainImage.addEventListener('click', () => {
+  fileInput.value = '';
+  fileInput.click();
+});
+
+btnOpenPaletteImage.addEventListener('click', () => {
+  paletteFileInput.value = '';
+  paletteFileInput.click();
+});
 
 // MASTER RESET ALL SETTINGS TO DEFAULTS
 btnResetAll.addEventListener('click', () => {
   setEngine(DEFAULTS.engine);
   selectDivisor(DEFAULTS.divisor);
+  setCustomScaleMode(DEFAULTS.customScaleMode);
+  customFactorVal = DEFAULTS.customFactor;
+  customTargetWVal = DEFAULTS.customTargetW;
+  customTargetHVal = DEFAULTS.customTargetH;
+  customKeepAspectVal = DEFAULTS.customKeepAspect;
+  syncTargetSizeInputs();
+  if (snapperCustomFactorNum) snapperCustomFactorNum.value = customFactorVal;
+  if (unfakeCustomFactorNum) unfakeCustomFactorNum.value = customFactorVal;
 
   // Pixel Snapper defaults
   outlineWeight.value = DEFAULTS.outlineWeight;
@@ -408,9 +697,12 @@ btnResetAll.addEventListener('click', () => {
   paletteSelect.value = DEFAULTS.palette;
 
   // Unfake.js defaults
-  unfakeDetectMethod.value = DEFAULTS.unfakeDetectMethod;
-  unfakeManualScaleRow.style.display = 'none';
-  unfakeManualScale.value = DEFAULTS.unfakeManualScale;
+  if (snapperDetectMethod) snapperDetectMethod.value = DEFAULTS.unfakeDetectMethod;
+  if (unfakeDetectMethod) unfakeDetectMethod.value = DEFAULTS.unfakeDetectMethod;
+  if (snapperManualScaleRow) snapperManualScaleRow.style.display = 'none';
+  if (unfakeManualScaleRow) unfakeManualScaleRow.style.display = 'none';
+  if (snapperManualScale) snapperManualScale.value = DEFAULTS.unfakeManualScale;
+  if (unfakeManualScale) unfakeManualScale.value = DEFAULTS.unfakeManualScale;
   unfakeSnapGrid.checked = DEFAULTS.unfakeSnapGrid;
   unfakeElasticGrid.checked = DEFAULTS.unfakeElasticGrid;
   unfakeDownscaleMethod.value = DEFAULTS.unfakeDownscaleMethod;
@@ -433,9 +725,6 @@ btnResetAll.addEventListener('click', () => {
   btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
 
   updatePalettePreview();
-  if (rawImageElement) {
-    runScaleDetection();
-  }
   updateDimensionsUI();
   triggerPreviewDebounced();
 });
@@ -448,7 +737,7 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
 
     if (param === 'divisor' || param === 'unfakeDivisor') {
       selectDivisor(DEFAULTS.divisor);
-      if (rawImageElement) await runScaleDetection();
+      if (DEFAULTS.divisor === 'auto' && rawImageElement) await runScaleDetection();
     } else if (param === 'outlineWeight') {
       outlineWeight.value = DEFAULTS.outlineWeight;
       outlineWeightNum.value = DEFAULTS.outlineWeight;
@@ -787,14 +1076,14 @@ async function runScaleDetection() {
   const h = rawImageElement.naturalHeight || rawImageElement.height;
   const imgData = rawOffCtx.getImageData(0, 0, w, h);
 
-  if (unfakeScaleStatText) {
-    unfakeScaleStatText.textContent = "Analyzing scale...";
-  }
+  const analyzingText = "Analyzing scale...";
+  if (snapperScaleStatText) snapperScaleStatText.textContent = analyzingText;
+  if (unfakeScaleStatText) unfakeScaleStatText.textContent = analyzingText;
 
   try {
     let det = null;
-    const method = currentEngine === 'unfake' ? unfakeDetectMethod.value : 'auto';
-    const manualVal = parseFloat(unfakeManualScale.value) || 8.0;
+    const method = (currentEngine === 'unfake' ? unfakeDetectMethod.value : snapperDetectMethod.value) || 'auto';
+    const manualVal = parseFloat(currentEngine === 'unfake' ? unfakeManualScale.value : snapperManualScale.value) || 8.0;
 
     if (window.UnfakeEngine && typeof window.UnfakeEngine.detectScale === 'function') {
       det = await window.UnfakeEngine.detectScale(imgData, {
@@ -808,29 +1097,30 @@ async function runScaleDetection() {
       detectedGrid = det.grid;
       const scaleDesc = Number.isInteger(detectedScale) ? `${detectedScale}x` : `${detectedScale.toFixed(2)}x`;
       const methodDesc = (det.method || 'auto').replace('auto_', '').toUpperCase();
-      if (unfakeScaleStatText) {
-        unfakeScaleStatText.textContent = `${scaleDesc} [${methodDesc}]`;
-      }
+      const statusDesc = `${scaleDesc} [${methodDesc}]`;
+      if (snapperScaleStatText) snapperScaleStatText.textContent = statusDesc;
+      if (unfakeScaleStatText) unfakeScaleStatText.textContent = statusDesc;
     } else {
       detectedScale = 1;
       detectedGrid = null;
-      if (unfakeScaleStatText) {
-        unfakeScaleStatText.textContent = "1x (No grid found)";
-      }
+      if (snapperScaleStatText) snapperScaleStatText.textContent = "1x (No grid found)";
+      if (unfakeScaleStatText) unfakeScaleStatText.textContent = "1x (No grid found)";
     }
   } catch (err) {
     console.warn("Scale detection failed:", err);
     detectedScale = 1;
-    if (unfakeScaleStatText) {
-      unfakeScaleStatText.textContent = "1x (Fallback)";
-    }
+    if (snapperScaleStatText) snapperScaleStatText.textContent = "1x (Fallback)";
+    if (unfakeScaleStatText) unfakeScaleStatText.textContent = "1x (Fallback)";
   }
 
   // Update WASM Badge status
-  if (unfakeWasmBadge && window.UnfakeEngine) {
+  if (window.UnfakeEngine) {
     const isWasm = window.UnfakeEngine.isWasmActive();
-    unfakeWasmBadge.textContent = isWasm ? 'RUST WASM' : 'PURE JS';
-    unfakeWasmBadge.style.color = isWasm ? 'var(--accent-green)' : 'var(--accent-yellow)';
+    [snapperWasmBadge, unfakeWasmBadge].forEach(badge => {
+      if (!badge) return;
+      badge.textContent = isWasm ? 'RUST WASM' : 'PURE JS';
+      badge.style.color = isWasm ? 'var(--accent-green)' : 'var(--accent-yellow)';
+    });
   }
 
   updateDimensionsUI();
@@ -864,7 +1154,7 @@ function loadImage(file) {
       if (currentDivisor === 'auto') {
         await runScaleDetection();
       }
-      selectDivisor(currentDivisor || 'auto');
+      selectDivisor(currentDivisor !== undefined ? currentDivisor : 1);
       updateDimensionsUI();
 
       setTimeout(() => {
@@ -896,7 +1186,14 @@ function updateDimensionsUI() {
   const targetH = Math.max(1, Math.round(h / effDiv));
 
   const scaleStr = Number.isInteger(effDiv) ? `${effDiv}x` : `${effDiv.toFixed(2)}x`;
-  const divLabel = currentDivisor === 'auto' ? `Auto (/${scaleStr})` : `/${effDiv}`;
+  let divLabel;
+  if (currentDivisor === 'auto') {
+    divLabel = `Auto (/${scaleStr})`;
+  } else if (currentDivisor === 'custom') {
+    divLabel = customScaleMode === 'factor' ? `Custom (/${customFactorVal})` : `Target (${targetW}x${targetH})`;
+  } else {
+    divLabel = effDiv === 1 ? `1x` : `/${effDiv}`;
+  }
 
   origRes.textContent = `${w}x${h}`;
   if (targetDimText) targetDimText.textContent = `${targetW}x${targetH} px (${divLabel})`;
@@ -937,13 +1234,10 @@ btnCloseImage.addEventListener('click', () => {
 });
 
 // DEBOUNCED PREVIEW TRIGGER WITH MULTI-INPUT SETTLING DELAY
-const PREVIEW_DEBOUNCE_MS = 220; // Waits 220ms for rapid slider/stepper/button inputs to settle before running
-
 function triggerPreviewDebounced(delay = PREVIEW_DEBOUNCE_MS) {
+  if (!rawImageElement) return;
   if (previewTimeout) clearTimeout(previewTimeout);
-  if (rawImageElement) {
-    pipelineTag.textContent = "Pending...";
-  }
+  pipelineTag.textContent = "Pending...";
   previewTimeout = setTimeout(() => {
     updatePreviewAsync();
   }, delay);

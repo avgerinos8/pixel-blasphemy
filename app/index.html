@@ -67,20 +67,102 @@
           <div class="controls-columns engine-panel" id="panelSnapperControls">
             <!-- SUB-COLUMN 1: GEOMETRY, OUTLINES & ALPHA -->
             <div class="controls-col">
-              <!-- DOWNSCALE FACTOR (DEFAULT: AUTO VIA UNFAKE SCALE DETECTION) -->
+              <!-- DOWNSCALE FACTOR (DEFAULT: 1x, AUTO VIA UNFAKE DETECTOR, OR /CUSTOM) -->
               <div class="control-box">
                 <div class="label-row">
                   <label>DOWNSCALE:</label>
                   <span class="dim-badge" id="targetDimText">Waiting...</span>
-                  <button type="button" class="btn-reset-param" data-param="divisor" title="Reset Downscale to AUTO">&#8634;</button>
+                  <button type="button" class="btn-reset-param" data-param="divisor" title="Reset Downscale to 1x">&#8634;</button>
                 </div>
                 <div class="scale-btn-group" id="scaleGroup">
-                  <button class="scale-btn active" data-divisor="auto" title="Intelligent Auto Scale Detection (unfake.js)">AUTO</button>
-                  <button class="scale-btn" data-divisor="1" title="Bypass Downscale (1x)">1x</button>
+                  <button class="scale-btn" data-divisor="auto" title="Intelligent Auto Scale Detection (unfake.js)">AUTO</button>
+                  <button class="scale-btn active" data-divisor="1" title="Original Native Resolution (1x)">1x</button>
                   <button class="scale-btn" data-divisor="2">/2</button>
                   <button class="scale-btn" data-divisor="4">/4</button>
                   <button class="scale-btn" data-divisor="8">/8</button>
                   <button class="scale-btn" data-divisor="16">/16</button>
+                  <button class="scale-btn" data-divisor="custom" title="Custom Factor (/N) or Target Result Size">/custom</button>
+                </div>
+
+                <!-- CUSTOM DOWNSCALE PANEL (SNAPPER) -->
+                <div class="custom-scale-panel" id="snapperCustomPanel" style="display:none; margin-top:6px;">
+                  <div style="display:flex; gap:4px; margin-bottom:4px;">
+                    <button type="button" class="custom-tab-btn active" data-mode="factor" id="snapperCustomModeFactor">/ FACTOR</button>
+                    <button type="button" class="custom-tab-btn" data-mode="size" id="snapperCustomModeSize">TARGET SIZE</button>
+                  </div>
+                  <!-- Mode 1: Factor -->
+                  <div id="snapperCustomFactorSection">
+                    <div class="label-row" style="margin-bottom:4px;">
+                      <label style="font-size:0.72rem;">DIVIDE BY:</label>
+                      <div class="stepper-group">
+                        <button type="button" class="btn-step" data-target="snapperCustomFactorNum" data-step="-0.5">-</button>
+                        <input type="number" id="snapperCustomFactorNum" min="0.1" max="128" step="0.5" value="5.0" class="num-box" style="width:50px;">
+                        <button type="button" class="btn-step" data-target="snapperCustomFactorNum" data-step="0.5">+</button>
+                      </div>
+                    </div>
+                    <div style="display:flex; gap:3px;">
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="3">/3</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="5">/5</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="6">/6</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="10">/10</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="12">/12</button>
+                    </div>
+                  </div>
+                  <!-- Mode 2: Target Size -->
+                  <div id="snapperCustomSizeSection" style="display:none;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <label style="font-size:0.72rem;">TARGET SIZE:</label>
+                      <div style="display:flex; align-items:center; gap:2px;">
+                        <input type="number" id="snapperCustomTargetW" min="4" max="4096" step="1" value="64" class="num-box" style="width:44px;" title="Width (px)">
+                        <span style="font-size:0.7rem; color:var(--text-dim);">×</span>
+                        <input type="number" id="snapperCustomTargetH" min="4" max="4096" step="1" value="64" class="num-box" style="width:44px;" title="Height (px)">
+                      </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <label style="font-size:0.67rem; color:var(--text-dim); display:flex; align-items:center; gap:3px; cursor:pointer;">
+                        <input type="checkbox" id="snapperCustomKeepAspect" checked> Lock Aspect
+                      </label>
+                      <span id="snapperCustomDivCalc" style="font-size:0.68rem; color:var(--accent-yellow);"></span>
+                    </div>
+                    <div style="display:flex; gap:3px;">
+                      <button type="button" class="chip-preset btn-size-chip" data-w="16" data-h="16">16x16</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="32" data-h="32">32x32</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="48" data-h="48">48x48</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="64" data-h="64">64x64</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="128" data-h="128">128x128</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SCALE DETECTION ALGORITHM (PIXEL SNAPPER - ACTIVE ONLY WHEN AUTO IS SELECTED) -->
+              <div class="control-box is-inactive" id="snapperDetectBox">
+                <div class="label-row">
+                  <label for="snapperDetectMethod">SCALE DETECTOR:</label>
+                  <span class="badge-mini" id="snapperWasmBadge">RUST WASM</span>
+                </div>
+                <select id="snapperDetectMethod" class="compact-select" disabled title="Select AUTO in Downscale to enable Scale Detector">
+                  <option value="auto" selected>Auto (Runs &rarr; Edge &rarr; Fractional Grid)</option>
+                  <option value="edge">Edge-Aware Tiled (Best for AI Art)</option>
+                  <option value="edge_legacy">Edge-Aware Single ROI</option>
+                  <option value="runs">Runs-Based (Clean Integer Art)</option>
+                  <option value="manual">Manual Scale Factor</option>
+                </select>
+
+                <div class="scale-stat-badge" id="snapperScaleStatBadge" style="margin-top:4px;">
+                  <span>STATUS:</span>
+                  <strong id="snapperScaleStatText">Inactive (Select AUTO to enable)</strong>
+                </div>
+
+                <div class="synced-field" id="snapperManualScaleRow" style="margin-top:6px; display:none;">
+                  <div class="label-row">
+                    <label for="snapperManualScale">MANUAL SCALE:</label>
+                    <div class="stepper-group">
+                      <button type="button" class="btn-step" data-target="snapperManualScale" data-step="-0.5">-</button>
+                      <input type="number" id="snapperManualScale" min="1.0" max="64.0" step="0.25" value="8.0" class="num-box" disabled>
+                      <button type="button" class="btn-step" data-target="snapperManualScale" data-step="0.5">+</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -238,30 +320,81 @@
           <div class="controls-columns engine-panel" id="panelUnfakeControls" style="display:none;">
             <!-- SUB-COLUMN 1: SCALE DETECTION, GRID & DOWNSCALING -->
             <div class="controls-col">
-              <!-- DOWNSCALE FACTOR -->
+              <!-- DOWNSCALE FACTOR (DEFAULT: 1x, AUTO VIA UNFAKE DETECTOR, OR /CUSTOM) -->
               <div class="control-box">
                 <div class="label-row">
                   <label>DOWNSCALE:</label>
                   <span class="dim-badge" id="unfakeTargetDimText">Waiting...</span>
-                  <button type="button" class="btn-reset-param" data-param="unfakeDivisor" title="Reset Downscale to AUTO">&#8634;</button>
+                  <button type="button" class="btn-reset-param" data-param="unfakeDivisor" title="Reset Downscale to 1x">&#8634;</button>
                 </div>
                 <div class="scale-btn-group" id="unfakeScaleGroup">
-                  <button class="scale-btn active" data-divisor="auto" title="Intelligent Auto Scale Detection (unfake.js)">AUTO</button>
-                  <button class="scale-btn" data-divisor="1" title="Bypass Downscale (1x)">1x</button>
+                  <button class="scale-btn" data-divisor="auto" title="Intelligent Auto Scale Detection (unfake.js)">AUTO</button>
+                  <button class="scale-btn active" data-divisor="1" title="Original Native Resolution (1x)">1x</button>
                   <button class="scale-btn" data-divisor="2">/2</button>
                   <button class="scale-btn" data-divisor="4">/4</button>
                   <button class="scale-btn" data-divisor="8">/8</button>
                   <button class="scale-btn" data-divisor="16">/16</button>
+                  <button class="scale-btn" data-divisor="custom" title="Custom Factor (/N) or Target Result Size">/custom</button>
+                </div>
+
+                <!-- CUSTOM DOWNSCALE PANEL (UNFAKE) -->
+                <div class="custom-scale-panel" id="unfakeCustomPanel" style="display:none; margin-top:6px;">
+                  <div style="display:flex; gap:4px; margin-bottom:4px;">
+                    <button type="button" class="custom-tab-btn active" data-mode="factor" id="unfakeCustomModeFactor">/ FACTOR</button>
+                    <button type="button" class="custom-tab-btn" data-mode="size" id="unfakeCustomModeSize">TARGET SIZE</button>
+                  </div>
+                  <!-- Mode 1: Factor -->
+                  <div id="unfakeCustomFactorSection">
+                    <div class="label-row" style="margin-bottom:4px;">
+                      <label style="font-size:0.72rem;">DIVIDE BY:</label>
+                      <div class="stepper-group">
+                        <button type="button" class="btn-step" data-target="unfakeCustomFactorNum" data-step="-0.5">-</button>
+                        <input type="number" id="unfakeCustomFactorNum" min="0.1" max="128" step="0.5" value="5.0" class="num-box" style="width:50px;">
+                        <button type="button" class="btn-step" data-target="unfakeCustomFactorNum" data-step="0.5">+</button>
+                      </div>
+                    </div>
+                    <div style="display:flex; gap:3px;">
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="3">/3</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="5">/5</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="6">/6</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="10">/10</button>
+                      <button type="button" class="chip-preset btn-factor-chip" data-val="12">/12</button>
+                    </div>
+                  </div>
+                  <!-- Mode 2: Target Size -->
+                  <div id="unfakeCustomSizeSection" style="display:none;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <label style="font-size:0.72rem;">TARGET SIZE:</label>
+                      <div style="display:flex; align-items:center; gap:2px;">
+                        <input type="number" id="unfakeCustomTargetW" min="4" max="4096" step="1" value="64" class="num-box" style="width:44px;" title="Width (px)">
+                        <span style="font-size:0.7rem; color:var(--text-dim);">×</span>
+                        <input type="number" id="unfakeCustomTargetH" min="4" max="4096" step="1" value="64" class="num-box" style="width:44px;" title="Height (px)">
+                      </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <label style="font-size:0.67rem; color:var(--text-dim); display:flex; align-items:center; gap:3px; cursor:pointer;">
+                        <input type="checkbox" id="unfakeCustomKeepAspect" checked> Lock Aspect
+                      </label>
+                      <span id="unfakeCustomDivCalc" style="font-size:0.68rem; color:var(--accent-yellow);"></span>
+                    </div>
+                    <div style="display:flex; gap:3px;">
+                      <button type="button" class="chip-preset btn-size-chip" data-w="16" data-h="16">16x16</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="32" data-h="32">32x32</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="48" data-h="48">48x48</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="64" data-h="64">64x64</button>
+                      <button type="button" class="chip-preset btn-size-chip" data-w="128" data-h="128">128x128</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <!-- SCALE DETECTION ALGORITHM -->
-              <div class="control-box">
+              <!-- SCALE DETECTION ALGORITHM (UNFAKE - ACTIVE ONLY WHEN AUTO IS SELECTED) -->
+              <div class="control-box is-inactive" id="unfakeDetectBox">
                 <div class="label-row">
                   <label for="unfakeDetectMethod">SCALE DETECTOR:</label>
                   <span class="badge-mini" id="unfakeWasmBadge">RUST WASM</span>
                 </div>
-                <select id="unfakeDetectMethod" class="compact-select">
+                <select id="unfakeDetectMethod" class="compact-select" disabled title="Select AUTO in Downscale to enable Scale Detector">
                   <option value="auto" selected>Auto (Runs &rarr; Edge &rarr; Fractional Grid)</option>
                   <option value="edge">Edge-Aware Tiled (Best for AI Art)</option>
                   <option value="edge_legacy">Edge-Aware Single ROI</option>
@@ -271,7 +404,7 @@
 
                 <div class="scale-stat-badge" id="unfakeScaleStatBadge" style="margin-top:4px;">
                   <span>STATUS:</span>
-                  <strong id="unfakeScaleStatText">Auto-Detecting...</strong>
+                  <strong id="unfakeScaleStatText">Inactive (Select AUTO to enable)</strong>
                 </div>
 
                 <div class="synced-field" id="unfakeManualScaleRow" style="margin-top:6px; display:none;">
@@ -279,7 +412,7 @@
                     <label for="unfakeManualScale">MANUAL SCALE:</label>
                     <div class="stepper-group">
                       <button type="button" class="btn-step" data-target="unfakeManualScale" data-step="-0.5">-</button>
-                      <input type="number" id="unfakeManualScale" min="1.0" max="64.0" step="0.25" value="8.0" class="num-box">
+                      <input type="number" id="unfakeManualScale" min="1.0" max="64.0" step="0.25" value="8.0" class="num-box" disabled>
                       <button type="button" class="btn-step" data-target="unfakeManualScale" data-step="0.5">+</button>
                     </div>
                   </div>
