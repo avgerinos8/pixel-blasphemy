@@ -165,6 +165,8 @@ const btnZoomOut = document.getElementById('btnZoomOut');
 const btnFitZoom = document.getElementById('btnFitZoom');
 const btnResetZoom = document.getElementById('btnResetZoom');
 const btnToggleGrid = document.getElementById('btnToggleGrid');
+let gridCanvas = document.getElementById('gridCanvas');
+let gridAbortTimer = null;
 
 // Pixel Snapper Controls
 const scaleGroup = document.getElementById('scaleGroup');
@@ -1023,8 +1025,13 @@ btnResetAll.addEventListener('click', () => {
   unfakePaletteSelect.value = DEFAULTS.unfakePalette;
 
   showGrid = DEFAULTS.grid;
-  btnToggleGrid.classList.remove('btn-grid-active');
+  if (gridAbortTimer) {
+    clearTimeout(gridAbortTimer);
+    gridAbortTimer = null;
+  }
+  btnToggleGrid.classList.remove('btn-grid-active', 'btn-grid-aborted');
   btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
+  renderGridOverlay();
 
   updatePalettePreview();
   updateDimensionsUI();
@@ -1442,19 +1449,53 @@ function applyZoomToCanvas() {
   canvasScaler.style.height = `${currentH}px`;
 
   applyCanvasTransform();
+  renderGridOverlay();
 }
 
-// GRID TOGGLE
+// GRID TOGGLE & ZOOMED-OUT ABORT PROTECTION
 btnToggleGrid.addEventListener('click', () => {
-  showGrid = !showGrid;
-  if (showGrid) {
+  if (gridAbortTimer) {
+    clearTimeout(gridAbortTimer);
+    gridAbortTimer = null;
+    btnToggleGrid.classList.remove('btn-grid-aborted');
+  }
+
+  // If currently OFF and trying to turn ON: check if zoomed out too much (or no image loaded)
+  if (!showGrid) {
+    const targetW = currentSnappedCanvas ? currentSnappedCanvas.width : (rawImageElement ? Math.max(1, Math.round((rawImageElement.naturalWidth || rawImageElement.width) / getEffectiveDivisor())) : 1);
+    const baseW = rawImageElement ? (rawImageElement.naturalWidth || rawImageElement.width) : 0;
+    const currentW = Math.round(baseW * (zoomPercent / 100));
+    const cellScreenSize = targetW > 0 ? (currentW / targetW) : 0;
+
+    // If no image loaded or cells on screen are smaller than 6 physical pixels: ABORT
+    if (!rawImageElement || !currentSnappedCanvas || cellScreenSize < 6) {
+      showGrid = false;
+      btnToggleGrid.classList.remove('btn-grid-active');
+      btnToggleGrid.classList.add('btn-grid-aborted');
+      btnToggleGrid.textContent = 'ABORTED';
+
+      gridAbortTimer = setTimeout(() => {
+        btnToggleGrid.classList.remove('btn-grid-aborted');
+        btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
+        gridAbortTimer = null;
+      }, 1000);
+
+      renderGridOverlay();
+      return;
+    }
+
+    showGrid = true;
+    btnToggleGrid.classList.remove('btn-grid-aborted');
     btnToggleGrid.classList.add('btn-grid-active');
     btnToggleGrid.innerHTML = '&#9638; GRID: ON';
   } else {
+    showGrid = false;
+    btnToggleGrid.classList.remove('btn-grid-aborted');
     btnToggleGrid.classList.remove('btn-grid-active');
     btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
   }
-  renderSplitView();
+
+  renderGridOverlay();
 });
 
 // FILE DRAG & DROP / SELECTION
@@ -1866,6 +1907,14 @@ btnCloseImage.addEventListener('click', () => {
   resetPan();
   stopEyedropper();
   closeAdjustmentsPanel();
+  if (gridAbortTimer) {
+    clearTimeout(gridAbortTimer);
+    gridAbortTimer = null;
+  }
+  showGrid = false;
+  btnToggleGrid.classList.remove('btn-grid-active', 'btn-grid-aborted');
+  btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
+  renderGridOverlay();
 
   viewerToolbar.style.display = 'none';
   if (batchNavToolbar) batchNavToolbar.style.display = 'none';
@@ -3017,6 +3066,7 @@ function renderSplitView() {
     ctx.drawImage(currentSnappedCanvas, 0, 0, w, h);
     ctx.restore();
     updateSplitBarPosition();
+    renderGridOverlay();
     return;
   }
 
@@ -3041,31 +3091,102 @@ function renderSplitView() {
   ctx.clip();
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(currentSnappedCanvas, 0, 0, w, h);
+  ctx.restore();
 
-  // Grid Lines
-  if (showGrid) {
-    const targetW = currentSnappedCanvas.width;
-    const targetH = currentSnappedCanvas.height;
-    const stepX = w / targetW;
-    const stepY = h / targetH;
+  updateSplitBarPosition();
+  renderGridOverlay();
+}
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
-    ctx.lineWidth = Math.max(1, w / 512);
-    for (let x = splitX; x < w; x += stepX) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 0; y < h; y += stepY) {
-      ctx.beginPath();
-      ctx.moveTo(splitX, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
+function getGridCanvas() {
+  if (!gridCanvas) {
+    gridCanvas = document.getElementById('gridCanvas');
+    if (!gridCanvas && canvasScaler) {
+      gridCanvas = document.createElement('canvas');
+      gridCanvas.id = 'gridCanvas';
+      gridCanvas.className = 'grid-canvas';
+      gridCanvas.style.display = 'none';
+      canvasScaler.appendChild(gridCanvas);
     }
   }
-  ctx.restore();
-  updateSplitBarPosition();
+  return gridCanvas;
+}
+
+// 1 PIXEL GRID OVERLAY (50% WHITE, EXACT PIXEL SQUARES, ZOOM-GUARDED)
+function renderGridOverlay() {
+  const gCanvas = getGridCanvas();
+  if (!gCanvas) return;
+
+  if (!showGrid || !rawImageElement || !currentSnappedCanvas) {
+    gCanvas.style.display = 'none';
+    const gCtx = gCanvas.getContext('2d');
+    if (gCtx) gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+    return;
+  }
+
+  const targetW = currentSnappedCanvas.width;
+  const targetH = currentSnappedCanvas.height;
+  const baseW = rawImageElement.naturalWidth || rawImageElement.width;
+  const baseH = rawImageElement.naturalHeight || rawImageElement.height;
+  const currentW = Math.round(baseW * (zoomPercent / 100));
+  const currentH = Math.round(baseH * (zoomPercent / 100));
+
+  if (targetW <= 0 || targetH <= 0 || currentW <= 0 || currentH <= 0) {
+    gCanvas.style.display = 'none';
+    return;
+  }
+
+  const cellScreenW = currentW / targetW;
+  const cellScreenH = currentH / targetH;
+
+  // Zoomed-out safety threshold: if cells are smaller than 6px on screen, do not draw
+  if (cellScreenW < 6 || cellScreenH < 6) {
+    gCanvas.style.display = 'none';
+    const gCtx = gCanvas.getContext('2d');
+    if (gCtx) gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+    return;
+  }
+
+  if (gCanvas.width !== currentW || gCanvas.height !== currentH) {
+    gCanvas.width = currentW;
+    gCanvas.height = currentH;
+  }
+  gCanvas.style.width = `${currentW}px`;
+  gCanvas.style.height = `${currentH}px`;
+  gCanvas.style.display = 'block';
+
+  const gCtx = gCanvas.getContext('2d');
+  gCtx.clearRect(0, 0, currentW, currentH);
+
+  gCtx.save();
+  // Clip strictly to the right side of the split slider (the snapped pixel art side)
+  const splitScreenX = Math.round(currentW * splitPosition);
+  gCtx.beginPath();
+  gCtx.rect(splitScreenX, 0, currentW - splitScreenX, currentH);
+  gCtx.clip();
+
+  gCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  gCtx.lineWidth = 1;
+
+  gCtx.beginPath();
+  // Vertical column borders (from col 0 to targetW)
+  for (let i = 0; i <= targetW; i++) {
+    const x = i === targetW ? currentW - 1 : Math.round(i * cellScreenW);
+    if (x >= splitScreenX - 1 && x <= currentW) {
+      gCtx.moveTo(x + 0.5, 0);
+      gCtx.lineTo(x + 0.5, currentH);
+    }
+  }
+
+  // Horizontal row borders (from row 0 to targetH)
+  for (let j = 0; j <= targetH; j++) {
+    const y = j === targetH ? currentH - 1 : Math.round(j * cellScreenH);
+    if (y <= currentH) {
+      gCtx.moveTo(splitScreenX, y + 0.5);
+      gCtx.lineTo(currentW, y + 0.5);
+    }
+  }
+  gCtx.stroke();
+  gCtx.restore();
 }
 
 // SPLIT BAR DRAG
@@ -4326,8 +4447,10 @@ function applyOptionsProfile(opts) {
   if (opts.zoom !== undefined) setZoom(opts.zoom);
   if (opts.grid !== undefined) {
     showGrid = opts.grid;
+    btnToggleGrid.classList.remove('btn-grid-aborted');
     btnToggleGrid.classList.toggle('btn-grid-active', showGrid);
     btnToggleGrid.innerHTML = showGrid ? '&#9638; GRID: ON' : '&#9638; GRID: OFF';
+    renderGridOverlay();
   }
 
   updatePalettePreview();
