@@ -357,6 +357,16 @@ html, body {
   color: var(--text-main);
   font-weight: bold;
   letter-spacing: 0.5px;
+/* HIDE NATIVE BROWSER NUMBER SPINNERS (UP/DOWN ARROWS) ACROSS ALL BROWSERS */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
 }
 
 /* HIDE NATIVE BROWSER NUMBER SPINNERS (UP/DOWN ARROWS) ACROSS ALL BROWSERS */
