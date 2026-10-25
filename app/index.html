@@ -47,6 +47,17 @@
             </button>
           </div>
 
+          <!-- OPTIONS PROFILES BAR (SAVE & LOAD FULL CONFIG) -->
+          <div class="options-profile-bar">
+            <button type="button" class="btn-options-action" id="btnSaveOptions" title="Save current settings profile to ./temp/saved/options/">
+              &#128190; SAVE OPTIONS
+            </button>
+            <button type="button" class="btn-options-action" id="btnLoadOptions" title="Load settings profile from ./temp/saved/options/">
+              &#128194; LOAD OPTIONS
+            </button>
+          </div>
+          <input type="file" id="optionsFileInput" accept=".json" style="display:none;">
+
           <!-- HIDDEN FILE INPUTS (TRIGGERED BY BUTTONS OR DRAG-DROP) -->
           <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
           <input type="file" id="paletteFileInput" accept="image/*" style="display:none;">
@@ -617,12 +628,23 @@
               <div class="eyedropper-hud" id="eyedropperHud" style="display:none;">
                 <div class="eyedropper-hud-header">
                   <span class="eyedropper-hud-title">&#128394; EYEDROPPER PALETTE BUILDER</span>
-                  <span class="eyedropper-hud-hint" id="eyedropperHint">Click original image to add colors (1-by-1)</span>
+                  <label class="toggle-switch-wrapper" id="livePaletteToggleLabel" title="Toggle Live Palette Preview on Canvas">
+                    <span>LIVE PREVIEW:</span>
+                    <input type="checkbox" id="toggleLivePalette">
+                    <span class="toggle-slider-track"></span>
+                  </label>
                   <button type="button" class="btn-tool-sm" id="btnEyedropperClear" title="Clear all picked colors">CLEAR</button>
                   <button type="button" class="btn-tool-sm btn-tool-danger" id="btnEyedropperCancel" title="Cancel eyedropper mode">&#10005; CANCEL</button>
                 </div>
+                <div class="eyedropper-hud-hint" id="eyedropperHint">Click image to sample &bull; Left-Click: Edit color &bull; Right-Click: Delete</div>
                 <div class="eyedropper-swatches" id="eyedropperSwatches">
                   <span class="empty-swatches-hint">Click on image to sample colors...</span>
+                </div>
+                <div class="palette-save-row">
+                  <input type="text" id="savePaletteName" class="palette-name-input" placeholder="Palette Name..." maxlength="30" value="Custom Palette">
+                  <button type="button" class="btn btn-save-palette" id="btnSaveCustomPalette" disabled>
+                    💾 SAVE PALETTE
+                  </button>
                 </div>
                 <button type="button" class="btn btn-primary btn-finish-palette w-full" id="btnFinishPalette">
                   &#10004; FINISH PALETTE (0 COLORS)
@@ -966,6 +988,121 @@ pip install -r requirements.txt</code></pre>
         </div>
       </div>
     </section>
+  <!-- ADVANCED COLOR PICKER MODAL -->
+  <div class="color-picker-overlay" id="advColorPickerModal" style="display:none;">
+    <div class="color-picker-dialog">
+      <div class="color-picker-header">
+        <span class="color-picker-title">&#127912; ADVANCED COLOR PICKER</span>
+        <button type="button" class="btn-picker-close" id="btnAdvPickerClose">&#10005;</button>
+      </div>
+      <div class="color-picker-body">
+        <!-- TOP SWATCH COMPARISON & READOUTS -->
+        <div class="picker-top-row">
+          <div class="picker-swatch-compare" id="advSwatchCompare" title="Click to revert to original">
+            <div class="picker-swatch-box picker-swatch-new" id="advSwatchNew" title="New Color"></div>
+            <div class="picker-swatch-box picker-swatch-orig" id="advSwatchOrig" title="Original Color (Click to Revert)"></div>
+          </div>
+          <div class="picker-readouts">
+            <div class="readout-group">
+              <span class="readout-label">HEX:</span>
+              <input type="text" id="advHexInput" class="adv-hex-box" maxlength="7" value="#FF5500">
+            </div>
+            <div class="readout-row-sub">
+              <span id="advReadoutHsl">H: 15° S: 100% B: 100%</span>
+              <span id="advReadoutRgb">R: 255 G: 85 B: 0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- HUE WHEEL & TRIANGLE CANVAS -->
+        <div class="picker-wheel-container">
+          <canvas id="advPickerWheelCanvas" width="250" height="250"></canvas>
+        </div>
+
+        <!-- HARMONIES & SHADES (SIMILAR, COMPLEMENTARY, RANDOM CONTEXTUAL) -->
+        <div class="picker-harmonies-container">
+          <div class="picker-section-header">
+            <span class="picker-section-title">&#9684; HARMONIES &amp; SHADES</span>
+            <span class="picker-section-subtitle" id="advHarmoniesSub">Similar • Comp • Accents</span>
+          </div>
+          <div class="picker-harmonies-strip" id="advHarmoniesStrip">
+            <!-- Dynamic harmony swatches rendered via app.js -->
+          </div>
+        </div>
+
+        <!-- SLIDERS SECTION (H, S, B, R, G, B) -->
+        <div class="picker-sliders">
+          <div class="picker-slider-row">
+            <span class="slider-channel-lbl" style="color:#ff3366;" title="Hue (0-360°)">H</span>
+            <input type="range" class="adv-slider" id="advSliderH" min="0" max="360" value="15">
+            <input type="number" class="input-ctrl adv-num" id="advNumH" min="0" max="360" value="15">
+          </div>
+          <div class="picker-slider-row">
+            <span class="slider-channel-lbl" style="color:#33ffaa;" title="Saturation (0-100%)">S</span>
+            <input type="range" class="adv-slider" id="advSliderS" min="0" max="100" value="100">
+            <input type="number" class="input-ctrl adv-num" id="advNumS" min="0" max="100" value="100">
+          </div>
+          <div class="picker-slider-row">
+            <span class="slider-channel-lbl" style="color:#33aaff;" title="Brightness / Value (0-100%)">B</span>
+            <input type="range" class="adv-slider" id="advSliderB" min="0" max="100" value="100">
+            <input type="number" class="input-ctrl adv-num" id="advNumB" min="0" max="100" value="100">
+          </div>
+          <div class="picker-slider-row">
+            <span class="slider-channel-lbl" style="color:#ff5555;" title="Red (0-255)">R</span>
+            <input type="range" class="adv-slider" id="advSliderR" min="0" max="255" value="255">
+            <input type="number" class="input-ctrl adv-num" id="advNumR" min="0" max="255" value="255">
+          </div>
+          <div class="picker-slider-row">
+            <span class="slider-channel-lbl" style="color:#55ff55;" title="Green (0-255)">G</span>
+            <input type="range" class="adv-slider" id="advSliderG" min="0" max="255" value="85">
+            <input type="number" class="input-ctrl adv-num" id="advNumG" min="0" max="255" value="85">
+          </div>
+          <div class="picker-slider-row">
+            <span class="slider-channel-lbl" style="color:#5588ff;" title="Blue (0-255)">B</span>
+            <input type="range" class="adv-slider" id="advSliderBlue" min="0" max="255" value="0">
+            <input type="number" class="input-ctrl adv-num" id="advNumBlue" min="0" max="255" value="0">
+          </div>
+        </div>
+
+        <!-- GLOBAL COLOR HISTORY (3x8 = 24 RESERVED SLOTS) -->
+        <div class="picker-history-container">
+          <div class="picker-section-header">
+            <span class="picker-section-title">&#8635; COLOR HISTORY (24 SLOTS)</span>
+            <button type="button" class="btn-history-clear" id="btnAdvHistoryClear" title="Clear History">CLEAR</button>
+          </div>
+          <div class="picker-history-grid" id="advColorHistoryGrid">
+            <!-- 24 fixed history slots rendered via app.js -->
+          </div>
+        </div>
+      </div>
+      <div class="color-picker-footer">
+        <button type="button" class="btn btn-tool-sm" id="btnAdvPickerCancel">CANCEL</button>
+        <button type="button" class="btn btn-tool-sm btn-tool-active" id="btnAdvPickerApply">&#10004; APPLY COLOR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOAD SAVED OPTIONS MODAL -->
+  <div class="color-picker-overlay" id="optionsLoadModal" style="display:none;">
+    <div class="options-dialog">
+      <div class="color-picker-header">
+        <span class="color-picker-title">&#9881; LOAD OPTIONS PROFILE</span>
+        <button type="button" class="btn-picker-close" id="btnOptionsModalClose">&#10005;</button>
+      </div>
+      <div class="options-modal-body">
+        <div class="text-dim text-xs">Saved configuration profiles in <code>./temp/saved/options/</code>:</div>
+        <ul class="saved-options-list" id="savedOptionsList">
+          <li class="empty-swatches-hint">No saved profiles found.</li>
+        </ul>
+        <div style="border-top: 1px solid #1a2736; padding-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <span class="text-dim text-xs">Or restore from JSON file:</span>
+          <button type="button" class="btn-tool-sm" id="btnBrowseOptionsFile">&#128194; BROWSE FILE...</button>
+        </div>
+      </div>
+      <div class="color-picker-footer">
+        <button type="button" class="btn btn-tool-sm" id="btnOptionsModalCancel">CLOSE</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>

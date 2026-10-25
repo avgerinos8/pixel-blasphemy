@@ -190,9 +190,12 @@ const paletteRefThumb = document.getElementById('paletteRefThumb');
 const paletteRefNameEl = document.getElementById('paletteRefName');
 const btnClearPaletteRef = document.getElementById('btnClearPaletteRef');
 
-// Eyedropper HUD
+// Eyedropper HUD & Live Preview
 const eyedropperHud = document.getElementById('eyedropperHud');
 const eyedropperHint = document.getElementById('eyedropperHint');
+const toggleLivePalette = document.getElementById('toggleLivePalette');
+const savePaletteName = document.getElementById('savePaletteName');
+const btnSaveCustomPalette = document.getElementById('btnSaveCustomPalette');
 const btnEyedropperClear = document.getElementById('btnEyedropperClear');
 const btnEyedropperCancel = document.getElementById('btnEyedropperCancel');
 const eyedropperSwatches = document.getElementById('eyedropperSwatches');
@@ -202,6 +205,46 @@ const loupeColor = document.getElementById('loupeColor');
 const loupeHex = document.getElementById('loupeHex');
 let isEyedropperActive = false;
 let pickedEyedropperColors = [];
+let previousPaletteChoice = 'auto';
+
+// Advanced Color Picker DOM
+const advColorPickerModal = document.getElementById('advColorPickerModal');
+const btnAdvPickerClose = document.getElementById('btnAdvPickerClose');
+const btnAdvPickerCancel = document.getElementById('btnAdvPickerCancel');
+const btnAdvPickerApply = document.getElementById('btnAdvPickerApply');
+const advSwatchCompare = document.getElementById('advSwatchCompare');
+const advSwatchNew = document.getElementById('advSwatchNew');
+const advSwatchOrig = document.getElementById('advSwatchOrig');
+const advHexInput = document.getElementById('advHexInput');
+const advReadoutHsl = document.getElementById('advReadoutHsl');
+const advReadoutRgb = document.getElementById('advReadoutRgb');
+const advPickerWheelCanvas = document.getElementById('advPickerWheelCanvas');
+const advSliderH = document.getElementById('advSliderH');
+const advNumH = document.getElementById('advNumH');
+const advSliderS = document.getElementById('advSliderS');
+const advNumS = document.getElementById('advNumS');
+const advSliderB = document.getElementById('advSliderB');
+const advNumB = document.getElementById('advNumB');
+const advSliderR = document.getElementById('advSliderR');
+const advNumR = document.getElementById('advNumR');
+const advSliderG = document.getElementById('advSliderG');
+const advNumG = document.getElementById('advNumG');
+const advSliderBlue = document.getElementById('advSliderBlue');
+const advNumBlue = document.getElementById('advNumBlue');
+const advHarmoniesStrip = document.getElementById('advHarmoniesStrip');
+const advHarmoniesSub = document.getElementById('advHarmoniesSub');
+const advColorHistoryGrid = document.getElementById('advColorHistoryGrid');
+const btnAdvHistoryClear = document.getElementById('btnAdvHistoryClear');
+
+// Options Profile Save / Load DOM
+const btnSaveOptions = document.getElementById('btnSaveOptions');
+const btnLoadOptions = document.getElementById('btnLoadOptions');
+const optionsFileInput = document.getElementById('optionsFileInput');
+const optionsLoadModal = document.getElementById('optionsLoadModal');
+const btnOptionsModalClose = document.getElementById('btnOptionsModalClose');
+const btnOptionsModalCancel = document.getElementById('btnOptionsModalCancel');
+const savedOptionsList = document.getElementById('savedOptionsList');
+const btnBrowseOptionsFile = document.getElementById('btnBrowseOptionsFile');
 
 // Unfake.js Controls DOM
 const unfakeScaleGroup = document.getElementById('unfakeScaleGroup');
@@ -1704,7 +1747,7 @@ function updateSplitFromMouse(e) {
   updateSplitBarPosition();
 }
 
-// EYEDROPPER PALETTE BUILDER IMPLEMENTATION
+// EYEDROPPER PALETTE BUILDER & LIVE PREVIEW IMPLEMENTATION
 function startEyedropper() {
   if (!rawImageElement) return;
   isEyedropperActive = true;
@@ -1730,18 +1773,43 @@ function stopEyedropper() {
 
 function showEyedropperHint(msg) {
   if (!eyedropperHint) return;
-  const orig = eyedropperHint.textContent;
   eyedropperHint.textContent = msg;
   eyedropperHint.style.color = 'var(--accent-orange)';
   setTimeout(() => {
-    eyedropperHint.textContent = 'Click original image to add colors (1-by-1)';
+    eyedropperHint.textContent = 'Click image to sample • Left-Click: Edit • Right-Click: Delete';
     eyedropperHint.style.color = '#94a3b8';
   }, 1800);
 }
 
+function applyLiveCustomPalette() {
+  if (pickedEyedropperColors.length === 0) return;
+  PALETTES.customEyedropper = pickedEyedropperColors.map(c => [...c]);
+
+  [paletteSelect, unfakePaletteSelect].forEach(sel => {
+    if (!sel) return;
+    let opt = sel.querySelector('option[value="customEyedropper"]');
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = 'customEyedropper';
+      sel.insertBefore(opt, sel.firstChild);
+    }
+    opt.textContent = `Custom Eyedropper (${pickedEyedropperColors.length} Colors)`;
+    sel.value = 'customEyedropper';
+  });
+
+  renderSwatches(pickedEyedropperColors);
+  triggerPreviewDebounced();
+}
+
 function updateEyedropperUI() {
   eyedropperSwatches.innerHTML = '';
-  if (pickedEyedropperColors.length === 0) {
+  const count = pickedEyedropperColors.length;
+
+  if (btnSaveCustomPalette) {
+    btnSaveCustomPalette.disabled = count === 0;
+  }
+
+  if (count === 0) {
     eyedropperSwatches.innerHTML = '<span class="empty-swatches-hint">Click on image to sample colors...</span>';
     btnFinishPalette.innerHTML = '&#10004; FINISH PALETTE (0 COLORS)';
     btnFinishPalette.disabled = true;
@@ -1749,20 +1817,64 @@ function updateEyedropperUI() {
   }
 
   btnFinishPalette.disabled = false;
-  btnFinishPalette.innerHTML = `&#10004; FINISH PALETTE (${pickedEyedropperColors.length} COLORS)`;
+  btnFinishPalette.innerHTML = `&#10004; FINISH PALETTE (${count} COLORS)`;
 
   pickedEyedropperColors.forEach((c, idx) => {
     const sw = document.createElement('div');
     sw.className = 'eyedropper-swatch';
     const hex = rgbToHex(c[0], c[1], c[2]);
     sw.style.backgroundColor = `rgb(${c[0]},${c[1]},${c[2]})`;
-    sw.title = `${hex.toUpperCase()} (${c[0]},${c[1]},${c[2]}) - Click to remove`;
+    sw.title = `${hex.toUpperCase()} (${c[0]},${c[1]},${c[2]})\n• Left-Click: Edit in Advanced Picker\n• Right-Click: Delete`;
+
+    // LEFT-CLICK: Open Advanced Color Picker to edit this color
     sw.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openAdvancedColorPicker(idx);
+    });
+
+    // RIGHT-CLICK: Delete color
+    sw.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
       e.stopPropagation();
       pickedEyedropperColors.splice(idx, 1);
       updateEyedropperUI();
+      if (toggleLivePalette && toggleLivePalette.checked) {
+        if (pickedEyedropperColors.length > 0) {
+          applyLiveCustomPalette();
+        } else {
+          toggleLivePalette.checked = false;
+          paletteSelect.value = (previousPaletteChoice && previousPaletteChoice !== 'customEyedropper') ? previousPaletteChoice : 'auto';
+          if (unfakePaletteSelect) unfakePaletteSelect.value = paletteSelect.value;
+          updatePalettePreview();
+          triggerPreviewDebounced();
+        }
+      }
     });
+
     eyedropperSwatches.appendChild(sw);
+  });
+}
+
+// TOGGLE LIVE PREVIEW SLIDER (ON: Activates custom palette, OFF: Reverts to previous selection or auto k-means)
+if (toggleLivePalette) {
+  toggleLivePalette.addEventListener('change', () => {
+    if (toggleLivePalette.checked) {
+      if (paletteSelect.value !== 'customEyedropper') {
+        previousPaletteChoice = paletteSelect.value || 'auto';
+      }
+      if (pickedEyedropperColors.length > 0) {
+        applyLiveCustomPalette();
+      } else {
+        showEyedropperHint("Pick colors from the image first to preview!");
+      }
+    } else {
+      const fallback = (previousPaletteChoice && previousPaletteChoice !== 'customEyedropper') ? previousPaletteChoice : 'auto';
+      paletteSelect.value = fallback;
+      if (paletteSelect.value !== fallback) paletteSelect.value = 'auto';
+      if (unfakePaletteSelect) unfakePaletteSelect.value = paletteSelect.value;
+      updatePalettePreview();
+      triggerPreviewDebounced();
+    }
   });
 }
 
@@ -1783,6 +1895,13 @@ btnEyedropperCancel.addEventListener('click', () => stopEyedropper());
 btnEyedropperClear.addEventListener('click', () => {
   pickedEyedropperColors = [];
   updateEyedropperUI();
+  if (toggleLivePalette && toggleLivePalette.checked) {
+    toggleLivePalette.checked = false;
+    paletteSelect.value = (previousPaletteChoice && previousPaletteChoice !== 'customEyedropper') ? previousPaletteChoice : 'auto';
+    if (unfakePaletteSelect) unfakePaletteSelect.value = paletteSelect.value;
+    updatePalettePreview();
+    triggerPreviewDebounced();
+  }
 });
 
 btnFinishPalette.addEventListener('click', () => {
@@ -1790,23 +1909,8 @@ btnFinishPalette.addEventListener('click', () => {
     alert("Please pick at least 1 color from the image first!");
     return;
   }
-
-  // Register in PALETTES
-  PALETTES.customEyedropper = [...pickedEyedropperColors];
-
-  // Add or update option in paletteSelect
-  let opt = paletteSelect.querySelector('option[value="customEyedropper"]');
-  if (!opt) {
-    opt = document.createElement('option');
-    opt.value = 'customEyedropper';
-    paletteSelect.insertBefore(opt, paletteSelect.firstChild);
-  }
-  opt.textContent = `Custom Eyedropper (${pickedEyedropperColors.length} Colors)`;
-  paletteSelect.value = 'customEyedropper';
-
-  renderSwatches(pickedEyedropperColors);
+  applyLiveCustomPalette();
   stopEyedropper();
-  triggerPreviewDebounced();
 });
 
 // EYEDROPPER CANVAS HOVER & CLICK
@@ -1838,12 +1942,1085 @@ canvasScaler.addEventListener('click', (e) => {
     const exists = pickedEyedropperColors.some(c => rgbToHex(c[0], c[1], c[2]) === hex);
     if (!exists) {
       pickedEyedropperColors.push([r, g, b]);
+      addColorToGlobalHistory([r, g, b]);
       updateEyedropperUI();
+      if (toggleLivePalette && toggleLivePalette.checked) {
+        applyLiveCustomPalette();
+      }
     } else {
       showEyedropperHint(`Color ${hex.toUpperCase()} already in palette`);
     }
   }
 });
+
+// =============================================================================
+// OPEN-SOURCE GPL PALETTE GENERATOR & MULTI-TIER STORAGE (STORAGE + API + GPL)
+// =============================================================================
+function generateGPLContent(name, colors) {
+  let gpl = `GIMP Palette\nName: ${name}\nColumns: 8\n#\n`;
+  for (let c of colors) {
+    const r = Math.min(255, Math.max(0, Math.round(c[0])));
+    const g = Math.min(255, Math.max(0, Math.round(c[1])));
+    const b = Math.min(255, Math.max(0, Math.round(c[2])));
+    const hex = '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+    gpl += `${r.toString().padStart(3, ' ')} ${g.toString().padStart(3, ' ')} ${b.toString().padStart(3, ' ')}\t${hex}\n`;
+  }
+  return gpl;
+}
+
+function downloadFile(filename, textContent, mimeType = 'text/plain') {
+  try {
+    const blob = new Blob([textContent], { type: mimeType });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 1000);
+  } catch (err) {
+    console.warn("Could not trigger file download:", err);
+  }
+}
+
+function getLocalSavedPalettes() {
+  try {
+    const raw = localStorage.getItem('pb_saved_custom_palettes');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveLocalPalette(paletteObj) {
+  try {
+    const list = getLocalSavedPalettes();
+    const existingIdx = list.findIndex(p => p.id === paletteObj.id);
+    if (existingIdx >= 0) {
+      list[existingIdx] = paletteObj;
+    } else {
+      list.push(paletteObj);
+    }
+    localStorage.setItem('pb_saved_custom_palettes', JSON.stringify(list));
+  } catch (e) {
+    console.warn("Could not save to localStorage:", e);
+  }
+}
+
+function addSavedPaletteToSelects(id, name, count) {
+  [paletteSelect, unfakePaletteSelect].forEach(sel => {
+    if (!sel) return;
+    let group = sel.querySelector('optgroup.optgroup-saved-palettes');
+    if (!group) {
+      group = document.createElement('optgroup');
+      group.label = "💾 Saved Custom Palettes";
+      group.className = "optgroup-saved-palettes";
+      const presetGroup = sel.querySelector('optgroup[label="PRESET PALETTES"]');
+      if (presetGroup) {
+        sel.insertBefore(group, presetGroup);
+      } else {
+        sel.appendChild(group);
+      }
+    }
+
+    let opt = group.querySelector(`option[value="${id}"]`);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = id;
+      group.appendChild(opt);
+    }
+    opt.textContent = `${name} (${count} colors)`;
+  });
+}
+
+async function loadSavedPalettes() {
+  // 1. Always load from LocalStorage first (works 100% offline and on static servers like serve)
+  const localList = getLocalSavedPalettes();
+  localList.forEach(p => {
+    if (p && p.id && Array.isArray(p.colors)) {
+      PALETTES[p.id] = p.colors;
+      addSavedPaletteToSelects(p.id, p.name || p.id, p.colors.length);
+    }
+  });
+
+  // 2. Try loading from Backend Server (/api/palettes) safely if available
+  try {
+    const res = await fetch('/api/palettes');
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.palettes)) {
+        data.palettes.forEach(p => {
+          if (p && p.id && Array.isArray(p.colors)) {
+            PALETTES[p.id] = p.colors;
+            addSavedPaletteToSelects(p.id, p.name || p.id, p.colors.length);
+          }
+        });
+      }
+    }
+  } catch (err) {
+    // Pure static environment - ignore silently
+  }
+}
+
+if (btnSaveCustomPalette) {
+  btnSaveCustomPalette.addEventListener('click', async () => {
+    if (pickedEyedropperColors.length === 0) {
+      alert("Custom palette is empty! Sample colors first.");
+      return;
+    }
+
+    const rawName = (savePaletteName.value || 'Custom Palette').trim();
+    if (!rawName) return;
+
+    btnSaveCustomPalette.disabled = true;
+    btnSaveCustomPalette.textContent = "SAVING...";
+
+    const safeId = 'saved_' + (rawName.replace(/[^a-zA-Z0-9_\-\u0370-\u03FF]/g, '_').toLowerCase() || 'palette');
+    const gplContent = generateGPLContent(rawName, pickedEyedropperColors);
+    const palObj = {
+      id: safeId,
+      name: rawName,
+      filename: `${safeId.replace('saved_', '')}.gpl`,
+      colors: pickedEyedropperColors.map(c => [...c]),
+      savedAt: new Date().toISOString()
+    };
+
+    // 1. Immediately register in memory & LocalStorage
+    PALETTES[safeId] = palObj.colors;
+    saveLocalPalette(palObj);
+    addSavedPaletteToSelects(safeId, rawName, pickedEyedropperColors.length);
+    paletteSelect.value = safeId;
+    if (unfakePaletteSelect) unfakePaletteSelect.value = safeId;
+    updatePalettePreview();
+    triggerPreviewDebounced();
+
+    // 2. Safely attempt to persist to Backend API (if server is active)
+    let savedToBackend = false;
+    try {
+      const res = await fetch('/api/palettes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: rawName,
+          colors: pickedEyedropperColors
+        })
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          savedToBackend = true;
+        }
+      }
+    } catch (e) {
+      // Backend not running on this port (e.g. running under static serve), fallback to browser storage & download
+    }
+
+    if (savedToBackend) {
+      showEyedropperHint(`✓ Saved "${rawName}" to ./temp/saved/palettes/!`);
+    } else {
+      // Running under static web server: trigger download of the .gpl file
+      downloadFile(`${safeId.replace('saved_', '')}.gpl`, gplContent, 'text/plain');
+      showEyedropperHint(`✓ Saved "${rawName}" to storage & exported .gpl!`);
+    }
+
+    btnSaveCustomPalette.disabled = false;
+    btnSaveCustomPalette.textContent = "💾 SAVE PALETTE";
+  });
+}
+
+// =============================================================================
+// ADVANCED COLOR PICKER (HUE WHEEL + EQUILATERAL SAT/VAL TRIANGLE + CHANNELS)
+// =============================================================================
+let editingSwatchIndex = -1;
+let advH = 15;        // Hue: 0 - 360
+let advS = 1.0;       // Saturation: 0.0 - 1.0
+let advV = 1.0;       // Value / Brightness: 0.0 - 1.0
+let advOrigRgb = [255, 85, 0];
+let isDraggingWheel = false;
+let isDraggingTriangle = false;
+const pickerCanvas = advPickerWheelCanvas;
+const pickerCtx = pickerCanvas ? pickerCanvas.getContext('2d') : null;
+
+// Barycentric Equilateral Triangle Geometry (Canvas 250x250, Center 125, 125)
+const TRI_APEX_X = 205; // Pure Hue Apex
+const TRI_APEX_Y = 125;
+const TRI_LEFT_X = 85;  // Vertical edge between White and Black
+const TRI_WHITE_Y = 55.72;
+const TRI_BLACK_Y = 194.28;
+const TRI_WIDTH = TRI_APEX_X - TRI_LEFT_X; // 120
+const TRI_SLOPE = (TRI_APEX_Y - TRI_WHITE_Y) / TRI_WIDTH; // 0.57735 (tan 30 deg)
+
+function hsvToRgb(h, s, v) {
+  h = (h % 360 + 360) % 360;
+  s = Math.max(0, Math.min(1, s));
+  v = Math.max(0, Math.min(1, v));
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  return [
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255)
+  ];
+}
+
+function rgbToHsv(r, g, b) {
+  r = r / 255;
+  g = g / 255;
+  b = b / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  if (max !== min) {
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else if (max === b) h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return [Math.round((h % 360 + 360) % 360), s, v];
+}
+
+function drawAdvColorWheelAndTriangle() {
+  if (!pickerCtx) return;
+  pickerCtx.clearRect(0, 0, 250, 250);
+
+  const cx = 125;
+  const cy = 125;
+  const rOut = 121;
+  const rIn = 99;
+  const ringMid = 110;
+
+  // 1. Draw Chromatic Equilateral Triangle FIRST (Smooth Barycentric Gradient)
+  const imgData = pickerCtx.createImageData(250, 250);
+  const data = imgData.data;
+  const pureHueRgb = hsvToRgb(advH, 1, 1);
+
+  for (let x = TRI_LEFT_X; x <= TRI_APEX_X; x++) {
+    const wHue = (x - TRI_LEFT_X) / TRI_WIDTH;
+    const yTop = TRI_WHITE_Y + (x - TRI_LEFT_X) * TRI_SLOPE;
+    const yBot = TRI_BLACK_Y - (x - TRI_LEFT_X) * TRI_SLOPE;
+    const yTopI = Math.ceil(yTop);
+    const yBotI = Math.floor(yBot);
+    const hySpan = yBot - yTop;
+
+    for (let y = yTopI; y <= yBotI; y++) {
+      const t = hySpan > 0 ? (y - yTop) / hySpan : 0;
+      const wBlack = t * (1 - wHue);
+      const wWhite = (1 - t) * (1 - wHue);
+
+      const r = Math.round(wHue * pureHueRgb[0] + wWhite * 255);
+      const g = Math.round(wHue * pureHueRgb[1] + wWhite * 255);
+      const b = Math.round(wHue * pureHueRgb[2] + wWhite * 255);
+
+      const pIdx = (y * 250 + x) * 4;
+      data[pIdx] = r;
+      data[pIdx + 1] = g;
+      data[pIdx + 2] = b;
+      data[pIdx + 3] = 255;
+    }
+  }
+  pickerCtx.putImageData(imgData, 0, 0);
+
+  // 2a. Draw Outer Continuous Hue Ring
+  for (let angle = 0; angle < 360; angle += 1) {
+    const startRad = (angle - 1) * Math.PI / 180;
+    const endRad = (angle + 1) * Math.PI / 180;
+    pickerCtx.beginPath();
+    pickerCtx.arc(cx, cy, ringMid, startRad, endRad);
+    pickerCtx.strokeStyle = `hsl(${angle}, 100%, 50%)`;
+    pickerCtx.lineWidth = (rOut - rIn);
+    pickerCtx.stroke();
+  }
+
+  // 2b. Draw 12 Discrete Harmonic Color Blocks on Inner Ring (around triangle, as in screenshot)
+  for (let i = 0; i < 12; i++) {
+    const tileH = i * 30;
+    const startRad = (i * 30 - 13.5) * Math.PI / 180;
+    const endRad = (i * 30 + 13.5) * Math.PI / 180;
+    const [tr, tg, tb] = hsvToRgb(tileH, Math.max(0.4, advS * 0.85), Math.max(0.3, advV * 0.7));
+    pickerCtx.beginPath();
+    pickerCtx.arc(cx, cy, 90.5, startRad, endRad);
+    pickerCtx.strokeStyle = `rgb(${tr},${tg},${tb})`;
+    pickerCtx.lineWidth = 14;
+    pickerCtx.stroke();
+  }
+
+  // 3. Draw Hue Selector Handle on Ring
+  const hueRad = advH * Math.PI / 180;
+  const hx = cx + ringMid * Math.cos(hueRad);
+  const hy = cy + ringMid * Math.sin(hueRad);
+
+  pickerCtx.save();
+  pickerCtx.translate(hx, hy);
+  pickerCtx.rotate(hueRad + Math.PI / 2);
+  pickerCtx.beginPath();
+  pickerCtx.roundRect(-10, -7, 20, 14, 5);
+  pickerCtx.fillStyle = `hsl(${advH}, 100%, 50%)`;
+  pickerCtx.fill();
+  pickerCtx.lineWidth = 2.5;
+  pickerCtx.strokeStyle = '#ffffff';
+  pickerCtx.stroke();
+  pickerCtx.lineWidth = 1;
+  pickerCtx.strokeStyle = '#000000';
+  pickerCtx.stroke();
+  pickerCtx.restore();
+
+  // 4. Draw Triangle Outline
+  pickerCtx.beginPath();
+  pickerCtx.moveTo(TRI_APEX_X, TRI_APEX_Y);
+  pickerCtx.lineTo(TRI_LEFT_X, TRI_WHITE_Y);
+  pickerCtx.lineTo(TRI_LEFT_X, TRI_BLACK_Y);
+  pickerCtx.closePath();
+  pickerCtx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  pickerCtx.lineWidth = 1.5;
+  pickerCtx.stroke();
+
+  // 5. Draw Sat/Val Marker Handle inside Triangle
+  const wHue = advS * advV;
+  const wWhite = (1 - advS) * advV;
+  const wBlack = 1 - advV;
+
+  const mx = TRI_LEFT_X + wHue * TRI_WIDTH;
+  const my = wHue * TRI_APEX_Y + wWhite * TRI_WHITE_Y + wBlack * TRI_BLACK_Y;
+
+  pickerCtx.beginPath();
+  pickerCtx.arc(mx, my, 6, 0, Math.PI * 2);
+  pickerCtx.strokeStyle = '#ffffff';
+  pickerCtx.lineWidth = 2.5;
+  pickerCtx.stroke();
+
+  pickerCtx.beginPath();
+  pickerCtx.arc(mx, my, 5, 0, Math.PI * 2);
+  pickerCtx.strokeStyle = '#000000';
+  pickerCtx.lineWidth = 1.2;
+  pickerCtx.stroke();
+}
+
+// DYNAMIC HARMONIES & SHADES STRIP (SIMILAR, COMPLEMENTARY, RANDOM CONTEXTUAL)
+function renderHarmoniesStrip(h, s, v) {
+  if (!advHarmoniesStrip) return;
+  advHarmoniesStrip.innerHTML = '';
+
+  const list = [
+    // 1. Similar / Analogous Hues (4 variations)
+    { desc: 'Similar (-30°)', hsv: [(h - 30 + 360) % 360, s, v] },
+    { desc: 'Similar (-15°)', hsv: [(h - 15 + 360) % 360, s, v] },
+    { desc: 'Similar (+15°)', hsv: [(h + 15) % 360, s, v] },
+    { desc: 'Similar (+30°)', hsv: [(h + 30) % 360, s, v] },
+
+    // 2. Tonal Shades (Lighter Tint, Darker Shade, Muted Desaturated)
+    { desc: 'Lighter Tint', hsv: [h, Math.max(0, s * 0.55), Math.min(1, v * 1.3)] },
+    { desc: 'Darker Shade', hsv: [h, Math.min(1, s * 1.15), Math.max(0.12, v * 0.6)] },
+    { desc: 'Muted Tone', hsv: [h, Math.max(0.08, s * 0.35), v] },
+
+    // 3. Complementary & Split-Complementary (3 variations)
+    { desc: 'Complementary (180°)', hsv: [(h + 180) % 360, s, v] },
+    { desc: 'Split-Comp 1 (150°)', hsv: [(h + 150) % 360, s, v] },
+    { desc: 'Split-Comp 2 (210°)', hsv: [(h + 210) % 360, s, v] },
+
+    // 4. Triadic Accents
+    { desc: 'Triad 1 (120°)', hsv: [(h + 120) % 360, s, v] },
+    { desc: 'Triad 2 (240°)', hsv: [(h + 240) % 360, s, v] },
+
+    // 5. Contextual Harmonious Variations in relation to current color
+    { desc: 'Warm Shift (+45°)', hsv: [(h + 45) % 360, Math.max(0.1, s * 0.85), Math.max(0.2, v * 0.9)] },
+    { desc: 'Cool Shift (-45°)', hsv: [(h - 45 + 360) % 360, Math.max(0.1, s * 0.9), Math.max(0.2, v * 0.85)] },
+    { desc: 'Contrast (+75°)', hsv: [(h + 75) % 360, Math.max(0.15, s * 0.95), Math.max(0.25, v * 0.9)] },
+    { desc: 'Contrast (-75°)', hsv: [(h - 75 + 360) % 360, Math.max(0.15, s * 0.95), Math.max(0.25, v * 0.9)] }
+  ];
+
+  list.forEach(item => {
+    const [rh, rs, rv] = item.hsv;
+    const [r, g, b] = hsvToRgb(rh, rs, rv);
+    const hex = rgbToHex(r, g, b);
+
+    const sw = document.createElement('div');
+    sw.className = 'harmony-swatch';
+    sw.style.backgroundColor = `rgb(${r},${g},${b})`;
+    sw.title = `${item.desc}: ${hex.toUpperCase()} (${r},${g},${b})\nClick to select`;
+
+    sw.addEventListener('click', (e) => {
+      e.stopPropagation();
+      advH = Math.round(rh);
+      advS = Math.max(0, Math.min(1, rs));
+      advV = Math.max(0, Math.min(1, rv));
+      syncAdvPickerUI('harmony');
+    });
+
+    advHarmoniesStrip.appendChild(sw);
+  });
+}
+
+// GLOBAL COLOR HISTORY (24 FIXED SLOTS, 3x8 GRID)
+const GLOBAL_COLOR_HISTORY_KEY = 'pb_global_color_history_24';
+
+function getGlobalColorHistory() {
+  try {
+    const raw = localStorage.getItem(GLOBAL_COLOR_HISTORY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 24);
+    }
+  } catch (e) {}
+
+  // Retro starter palette for initial 24 slots (Cyberpunk & Classic 8-bit)
+  return [
+    [255, 85, 0], [0, 240, 255], [255, 0, 85], [0, 255, 136],
+    [255, 208, 0], [148, 173, 199], [38, 52, 69], [11, 14, 20],
+    [228, 59, 68], [254, 174, 52], [254, 231, 97], [99, 199, 77],
+    [0, 153, 219], [44, 232, 245], [181, 80, 136], [246, 117, 122],
+    [255, 255, 255], [192, 203, 220], [90, 105, 136], [24, 20, 37],
+    [255, 0, 68], [104, 56, 108], [232, 183, 150], [62, 39, 49]
+  ];
+}
+
+function addColorToGlobalHistory(rgb) {
+  if (!rgb || rgb.length < 3) return;
+  const history = getGlobalColorHistory();
+  const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+
+  // Remove existing duplicate
+  const existingIdx = history.findIndex(c => rgbToHex(c[0], c[1], c[2]) === hex);
+  if (existingIdx >= 0) {
+    history.splice(existingIdx, 1);
+  }
+
+  // Prepend to front
+  history.unshift([Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])]);
+
+  // Clamp to max 24 slots (3x8)
+  const trimmed = history.slice(0, 24);
+  try {
+    localStorage.setItem(GLOBAL_COLOR_HISTORY_KEY, JSON.stringify(trimmed));
+  } catch (e) {}
+
+  renderGlobalColorHistory();
+}
+
+function renderGlobalColorHistory() {
+  if (!advColorHistoryGrid) return;
+  advColorHistoryGrid.innerHTML = '';
+  const history = getGlobalColorHistory();
+
+  // Exactly 24 slots (3 rows x 8 columns) are strictly rendered
+  for (let i = 0; i < 24; i++) {
+    const sw = document.createElement('div');
+    if (i < history.length) {
+      const c = history[i];
+      const hex = rgbToHex(c[0], c[1], c[2]);
+      sw.className = 'history-swatch';
+      sw.style.backgroundColor = `rgb(${c[0]},${c[1]},${c[2]})`;
+      sw.title = `Slot #${i + 1}: ${hex.toUpperCase()} (${c[0]},${c[1]},${c[2]})\nClick to select`;
+
+      sw.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const [h, s, v] = rgbToHsv(c[0], c[1], c[2]);
+        advH = h;
+        advS = s;
+        advV = v;
+        syncAdvPickerUI('history');
+      });
+    } else {
+      sw.className = 'history-swatch empty-slot';
+      sw.title = `Slot #${i + 1} (Empty)`;
+    }
+    advColorHistoryGrid.appendChild(sw);
+  }
+}
+
+if (btnAdvHistoryClear) {
+  btnAdvHistoryClear.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try {
+      localStorage.setItem(GLOBAL_COLOR_HISTORY_KEY, JSON.stringify([]));
+    } catch (err) {}
+    renderGlobalColorHistory();
+  });
+}
+
+function syncAdvPickerUI(source = 'all') {
+  const [r, g, b] = hsvToRgb(advH, advS, advV);
+  const hex = rgbToHex(r, g, b);
+
+  // Update Canvas
+  drawAdvColorWheelAndTriangle();
+
+  // Update Harmonies & Shades Strip
+  renderHarmoniesStrip(advH, advS, advV);
+
+  // Update Top Compare Swatches & Readouts
+  if (advSwatchNew) advSwatchNew.style.backgroundColor = `rgb(${r},${g},${b})`;
+  if (advSwatchOrig) advSwatchOrig.style.backgroundColor = `rgb(${advOrigRgb[0]},${advOrigRgb[1]},${advOrigRgb[2]})`;
+  if (source !== 'hex' && advHexInput) advHexInput.value = hex.toUpperCase();
+  if (advReadoutHsl) advReadoutHsl.textContent = `H: ${advH}° S: ${Math.round(advS * 100)}% B: ${Math.round(advV * 100)}%`;
+  if (advReadoutRgb) advReadoutRgb.textContent = `R: ${r} G: ${g} B: ${b}`;
+
+  // Update Sliders and Number Steppers
+  if (source !== 'sliders_h') {
+    if (advSliderH) advSliderH.value = advH;
+    if (advNumH) advNumH.value = advH;
+  }
+  if (source !== 'sliders_s') {
+    const sPct = Math.round(advS * 100);
+    if (advSliderS) advSliderS.value = sPct;
+    if (advNumS) advNumS.value = sPct;
+  }
+  if (source !== 'sliders_b') {
+    const vPct = Math.round(advV * 100);
+    if (advSliderB) advSliderB.value = vPct;
+    if (advNumB) advNumB.value = vPct;
+  }
+  if (source !== 'sliders_r') {
+    if (advSliderR) advSliderR.value = r;
+    if (advNumR) advNumR.value = r;
+  }
+  if (source !== 'sliders_g') {
+    if (advSliderG) advSliderG.value = g;
+    if (advNumG) advNumG.value = g;
+  }
+  if (source !== 'sliders_blue') {
+    if (advSliderBlue) advSliderBlue.value = b;
+    if (advNumBlue) advNumBlue.value = b;
+  }
+
+  // Live real-time preview update during edit if toggle is ON
+  if (editingSwatchIndex >= 0 && pickedEyedropperColors[editingSwatchIndex]) {
+    pickedEyedropperColors[editingSwatchIndex] = [r, g, b];
+    const swatchEl = eyedropperSwatches.children[editingSwatchIndex];
+    if (swatchEl) {
+      swatchEl.style.backgroundColor = `rgb(${r},${g},${b})`;
+      swatchEl.title = `${hex.toUpperCase()} (${r},${g},${b})\n• Left-Click: Edit in Advanced Picker\n• Right-Click: Delete`;
+    }
+    if (toggleLivePalette && toggleLivePalette.checked) {
+      PALETTES.customEyedropper = pickedEyedropperColors.map(c => [...c]);
+      triggerPreviewDebounced();
+    }
+  }
+}
+
+function openAdvancedColorPicker(idx) {
+  if (idx < 0 || idx >= pickedEyedropperColors.length) return;
+  editingSwatchIndex = idx;
+  const c = pickedEyedropperColors[idx];
+  advOrigRgb = [...c];
+  const [h, s, v] = rgbToHsv(c[0], c[1], c[2]);
+  advH = h;
+  advS = s;
+  advV = v;
+
+  if (advColorPickerModal) advColorPickerModal.style.display = 'flex';
+  syncAdvPickerUI();
+  renderGlobalColorHistory();
+}
+
+function closeAdvancedColorPicker(apply = false) {
+  if (!apply && editingSwatchIndex >= 0) {
+    // Revert swatch to original color
+    pickedEyedropperColors[editingSwatchIndex] = [...advOrigRgb];
+    updateEyedropperUI();
+    if (toggleLivePalette && toggleLivePalette.checked) {
+      applyLiveCustomPalette();
+    }
+  }
+  editingSwatchIndex = -1;
+  if (advColorPickerModal) advColorPickerModal.style.display = 'none';
+}
+
+if (btnAdvPickerClose) btnAdvPickerClose.addEventListener('click', () => closeAdvancedColorPicker(false));
+if (btnAdvPickerCancel) btnAdvPickerCancel.addEventListener('click', () => closeAdvancedColorPicker(false));
+if (btnAdvPickerApply) btnAdvPickerApply.addEventListener('click', () => {
+  const [r, g, b] = hsvToRgb(advH, advS, advV);
+  if (editingSwatchIndex >= 0) {
+    pickedEyedropperColors[editingSwatchIndex] = [r, g, b];
+    addColorToGlobalHistory([r, g, b]);
+    updateEyedropperUI();
+    if (toggleLivePalette && toggleLivePalette.checked) {
+      applyLiveCustomPalette();
+    }
+  }
+  closeAdvancedColorPicker(true);
+});
+
+// Click Original Swatch to Revert Color
+if (advSwatchCompare) {
+  advSwatchCompare.addEventListener('click', () => {
+    const [h, s, v] = rgbToHsv(advOrigRgb[0], advOrigRgb[1], advOrigRgb[2]);
+    advH = h;
+    advS = s;
+    advV = v;
+    syncAdvPickerUI();
+  });
+}
+
+// CANVAS INTERACTION FOR HUE WHEEL & TRIANGLE
+if (pickerCanvas) {
+  function handlePickerPointer(e) {
+    const rect = pickerCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const cx = 125, cy = 125;
+    const dist = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+
+    // Outer continuous Hue Ring (98 - 126px)
+    if (isDraggingWheel || (!isDraggingTriangle && dist >= 98 && dist <= 126)) {
+      isDraggingWheel = true;
+      let angle = Math.atan2(y - cy, x - cx) * 180 / Math.PI;
+      angle = (angle % 360 + 360) % 360;
+      advH = Math.round(angle);
+      syncAdvPickerUI('canvas');
+      return;
+    }
+
+    // Inner 12 Discrete Harmonic Blocks (83 - 97px)
+    if (!isDraggingWheel && !isDraggingTriangle && dist >= 83 && dist <= 97) {
+      let angle = Math.atan2(y - cy, x - cx) * 180 / Math.PI;
+      angle = (angle % 360 + 360) % 360;
+      const stepped = (Math.round(angle / 30) * 30) % 360;
+      advH = stepped;
+      syncAdvPickerUI('canvas');
+      return;
+    }
+
+    // Inner Chromatic Equilateral Triangle
+    if (isDraggingTriangle || (!isDraggingWheel && x >= TRI_LEFT_X - 10 && x <= TRI_APEX_X + 10)) {
+      isDraggingTriangle = true;
+      const clX = Math.max(TRI_LEFT_X, Math.min(TRI_APEX_X, x));
+      const wHue = (clX - TRI_LEFT_X) / TRI_WIDTH;
+
+      const yTop = TRI_WHITE_Y + (clX - TRI_LEFT_X) * TRI_SLOPE;
+      const yBot = TRI_BLACK_Y - (clX - TRI_LEFT_X) * TRI_SLOPE;
+      const clY = Math.max(yTop, Math.min(yBot, y));
+      const hySpan = yBot - yTop;
+
+      const t = hySpan > 0 ? (clY - yTop) / hySpan : 0;
+      const wBlack = t * (1 - wHue);
+      const wWhite = (1 - t) * (1 - wHue);
+
+      advV = Math.max(0, Math.min(1, 1 - wBlack));
+      advS = advV > 0 ? Math.max(0, Math.min(1, wHue / advV)) : 0;
+      syncAdvPickerUI('canvas');
+    }
+  }
+
+  pickerCanvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    handlePickerPointer(e);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isDraggingWheel || isDraggingTriangle) {
+      handlePickerPointer(e);
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDraggingWheel = false;
+    isDraggingTriangle = false;
+  });
+}
+
+// SLIDERS & NUMBER STEPPERS LISTENERS
+if (advSliderH) advSliderH.addEventListener('input', () => {
+  advH = parseInt(advSliderH.value) || 0;
+  syncAdvPickerUI('sliders_h');
+});
+if (advNumH) advNumH.addEventListener('input', () => {
+  advH = Math.max(0, Math.min(360, parseInt(advNumH.value) || 0));
+  syncAdvPickerUI('sliders_h');
+});
+
+if (advSliderS) advSliderS.addEventListener('input', () => {
+  advS = (parseInt(advSliderS.value) || 0) / 100;
+  syncAdvPickerUI('sliders_s');
+});
+if (advNumS) advNumS.addEventListener('input', () => {
+  advS = Math.max(0, Math.min(100, parseInt(advNumS.value) || 0)) / 100;
+  syncAdvPickerUI('sliders_s');
+});
+
+if (advSliderB) advSliderB.addEventListener('input', () => {
+  advV = (parseInt(advSliderB.value) || 0) / 100;
+  syncAdvPickerUI('sliders_b');
+});
+if (advNumB) advNumB.addEventListener('input', () => {
+  advV = Math.max(0, Math.min(100, parseInt(advNumB.value) || 0)) / 100;
+  syncAdvPickerUI('sliders_b');
+});
+
+function onRgbSliderChange() {
+  const r = Math.max(0, Math.min(255, parseInt(advSliderR.value) || 0));
+  const g = Math.max(0, Math.min(255, parseInt(advSliderG.value) || 0));
+  const b = Math.max(0, Math.min(255, parseInt(advSliderBlue.value) || 0));
+  const [h, s, v] = rgbToHsv(r, g, b);
+  advH = h;
+  advS = s;
+  advV = v;
+  syncAdvPickerUI('sliders_rgb');
+}
+
+if (advSliderR) advSliderR.addEventListener('input', () => {
+  if (advNumR) advNumR.value = advSliderR.value;
+  onRgbSliderChange();
+});
+if (advNumR) advNumR.addEventListener('input', () => {
+  if (advSliderR) advSliderR.value = advNumR.value;
+  onRgbSliderChange();
+});
+
+if (advSliderG) advSliderG.addEventListener('input', () => {
+  if (advNumG) advNumG.value = advSliderG.value;
+  onRgbSliderChange();
+});
+if (advNumG) advNumG.addEventListener('input', () => {
+  if (advSliderG) advSliderG.value = advNumG.value;
+  onRgbSliderChange();
+});
+
+if (advSliderBlue) advSliderBlue.addEventListener('input', () => {
+  if (advNumBlue) advNumBlue.value = advSliderBlue.value;
+  onRgbSliderChange();
+});
+if (advNumBlue) advNumBlue.addEventListener('input', () => {
+  if (advSliderBlue) advSliderBlue.value = advNumBlue.value;
+  onRgbSliderChange();
+});
+
+if (advHexInput) {
+  advHexInput.addEventListener('change', () => {
+    let hex = advHexInput.value.trim();
+    if (!hex.startsWith('#')) hex = '#' + hex;
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+      const rgb = hexToRgb(hex);
+      const [h, s, v] = rgbToHsv(rgb[0], rgb[1], rgb[2]);
+      advH = h;
+      advS = s;
+      advV = v;
+      syncAdvPickerUI('hex');
+    }
+  });
+}
+
+// =============================================================================
+// SAVE & RESTORE ACTIVE OPTIONS PROFILES (LOCAL JSON IN ./temp/saved/options/)
+// =============================================================================
+function collectActiveOptions() {
+  return {
+    version: "1.5",
+    timestamp: new Date().toISOString(),
+    engine: currentEngine,
+    divisor: currentDivisor,
+    customScaleMode: customScaleMode,
+    customFactor: customFactorVal,
+    customTargetW: customTargetWVal,
+    customTargetH: customTargetHVal,
+    customKeepAspect: customKeepAspectVal,
+    outlineWeight: parseFloat(outlineWeight.value) || 1.5,
+    edgeSensitivity: parseFloat(edgeSensitivity.value) || 0.5,
+    autoOutline: autoOutlineToggle.checked,
+    autoOutlineColor: autoOutlineColor.value,
+    snapAlpha: snapAlpha.checked,
+    tezumieEnabled: tezumieToggle.checked,
+    tezumieMethod: tezumieMethod.value,
+    tezumieStrength: parseFloat(tezumieStrength.value) || 0.75,
+    pass2Enabled: pass2Toggle.checked,
+    colorCount: parseInt(colorCount.value) || 16,
+    kmeansIter: parseInt(kmeansIter.value) || 15,
+    palette: paletteSelect.value,
+    zoom: zoomPercent,
+    grid: showGrid,
+    // Unfake.js Parameters
+    unfakeDetectMethod: unfakeDetectMethod ? unfakeDetectMethod.value : 'auto',
+    unfakeManualScale: unfakeManualScale ? parseFloat(unfakeManualScale.value) : 8.0,
+    unfakeSnapGrid: unfakeSnapGrid.checked,
+    unfakeElasticGrid: unfakeElasticGrid.checked,
+    unfakeDownscaleMethod: unfakeDownscaleMethod.value,
+    unfakeDomThreshold: parseFloat(unfakeDomThreshold.value) || 0.15,
+    unfakeMorph: unfakeMorph.checked,
+    unfakeJaggy: unfakeJaggy.checked,
+    unfakeAlphaBinarize: unfakeAlphaBinarize.checked,
+    unfakeAlphaThreshold: parseInt(unfakeAlphaThreshold.value) || 128,
+    unfakeAutoColors: unfakeAutoColors.checked,
+    unfakeMaxColors: parseInt(unfakeMaxColors.value) || 32,
+    unfakePalette: unfakePaletteSelect ? unfakePaletteSelect.value : 'auto'
+  };
+}
+
+function applyOptionsProfile(opts) {
+  if (!opts) return;
+
+  if (opts.engine) setEngine(opts.engine);
+  if (opts.divisor !== undefined) selectDivisor(opts.divisor);
+  if (opts.customScaleMode) setCustomScaleMode(opts.customScaleMode);
+  if (opts.customFactor !== undefined) {
+    customFactorVal = opts.customFactor;
+    if (snapperCustomFactorNum) snapperCustomFactorNum.value = customFactorVal;
+    if (unfakeCustomFactorNum) unfakeCustomFactorNum.value = customFactorVal;
+  }
+  if (opts.customTargetW !== undefined) customTargetWVal = opts.customTargetW;
+  if (opts.customTargetH !== undefined) customTargetHVal = opts.customTargetH;
+  if (opts.customKeepAspect !== undefined) {
+    customKeepAspectVal = opts.customKeepAspect;
+    if (snapperCustomKeepAspect) snapperCustomKeepAspect.checked = customKeepAspectVal;
+    if (unfakeCustomKeepAspect) unfakeCustomKeepAspect.checked = customKeepAspectVal;
+  }
+  syncTargetSizeInputs();
+  updateCustomCalculatedDiv();
+
+  // Pixel Snapper Options
+  if (opts.outlineWeight !== undefined) {
+    outlineWeight.value = opts.outlineWeight;
+    outlineWeightNum.value = opts.outlineWeight;
+  }
+  if (opts.edgeSensitivity !== undefined) {
+    edgeSensitivity.value = opts.edgeSensitivity;
+    edgeSensitivityNum.value = opts.edgeSensitivity;
+  }
+  if (opts.autoOutline !== undefined) autoOutlineToggle.checked = opts.autoOutline;
+  if (opts.autoOutlineColor) autoOutlineColor.value = opts.autoOutlineColor;
+  if (opts.snapAlpha !== undefined) snapAlpha.checked = opts.snapAlpha;
+  if (opts.tezumieEnabled !== undefined) {
+    tezumieToggle.checked = opts.tezumieEnabled;
+    tezumieOptions.style.display = opts.tezumieEnabled ? 'block' : 'none';
+  }
+  if (opts.tezumieMethod) tezumieMethod.value = opts.tezumieMethod;
+  if (opts.tezumieStrength !== undefined) {
+    tezumieStrength.value = opts.tezumieStrength;
+    tezumieStrengthNum.value = opts.tezumieStrength;
+  }
+  if (opts.pass2Enabled !== undefined) pass2Toggle.checked = opts.pass2Enabled;
+  if (opts.colorCount !== undefined) {
+    colorCount.value = opts.colorCount;
+    colorCountNum.value = opts.colorCount;
+  }
+  if (opts.kmeansIter !== undefined) {
+    kmeansIter.value = opts.kmeansIter;
+    kmeansIterNum.value = opts.kmeansIter;
+  }
+  if (opts.palette) {
+    paletteSelect.value = opts.palette;
+    if (unfakePaletteSelect) unfakePaletteSelect.value = opts.palette;
+  }
+
+  // Unfake.js Options
+  if (opts.unfakeDetectMethod && unfakeDetectMethod) {
+    unfakeDetectMethod.value = opts.unfakeDetectMethod;
+    if (snapperDetectMethod) snapperDetectMethod.value = opts.unfakeDetectMethod;
+  }
+  if (opts.unfakeManualScale !== undefined && unfakeManualScale) {
+    unfakeManualScale.value = opts.unfakeManualScale;
+    if (snapperManualScale) snapperManualScale.value = opts.unfakeManualScale;
+  }
+  if (opts.unfakeSnapGrid !== undefined) unfakeSnapGrid.checked = opts.unfakeSnapGrid;
+  if (opts.unfakeElasticGrid !== undefined) unfakeElasticGrid.checked = opts.unfakeElasticGrid;
+  if (opts.unfakeDownscaleMethod) unfakeDownscaleMethod.value = opts.unfakeDownscaleMethod;
+  if (opts.unfakeDomThreshold !== undefined) {
+    unfakeDomThreshold.value = opts.unfakeDomThreshold;
+    unfakeDomThresholdNum.value = opts.unfakeDomThreshold;
+  }
+  if (opts.unfakeMorph !== undefined) unfakeMorph.checked = opts.unfakeMorph;
+  if (opts.unfakeJaggy !== undefined) unfakeJaggy.checked = opts.unfakeJaggy;
+  if (opts.unfakeAlphaBinarize !== undefined) {
+    unfakeAlphaBinarize.checked = opts.unfakeAlphaBinarize;
+    unfakeAlphaThresholdRow.style.display = opts.unfakeAlphaBinarize ? 'block' : 'none';
+  }
+  if (opts.unfakeAlphaThreshold !== undefined) {
+    unfakeAlphaThreshold.value = opts.unfakeAlphaThreshold;
+    unfakeAlphaThresholdNum.value = opts.unfakeAlphaThreshold;
+  }
+  if (opts.unfakeAutoColors !== undefined) {
+    unfakeAutoColors.checked = opts.unfakeAutoColors;
+    unfakeMaxColorsRow.style.opacity = opts.unfakeAutoColors ? '0.5' : '1';
+  }
+  if (opts.unfakeMaxColors !== undefined) {
+    unfakeMaxColors.value = opts.unfakeMaxColors;
+    unfakeMaxColorsNum.value = opts.unfakeMaxColors;
+  }
+
+  // Zoom & Grid
+  if (opts.zoom !== undefined) setZoom(opts.zoom);
+  if (opts.grid !== undefined) {
+    showGrid = opts.grid;
+    btnToggleGrid.classList.toggle('btn-grid-active', showGrid);
+    btnToggleGrid.innerHTML = showGrid ? '&#9638; GRID: ON' : '&#9638; GRID: OFF';
+  }
+
+  updatePalettePreview();
+  updateDimensionsUI();
+  triggerPreviewDebounced();
+}
+
+function getLocalSavedOptions() {
+  try {
+    const raw = localStorage.getItem('pb_saved_options_profiles');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveLocalOptionsProfile(profileObj) {
+  try {
+    const list = getLocalSavedOptions();
+    const existingIdx = list.findIndex(p => p.id === profileObj.id);
+    if (existingIdx >= 0) {
+      list[existingIdx] = profileObj;
+    } else {
+      list.push(profileObj);
+    }
+    localStorage.setItem('pb_saved_options_profiles', JSON.stringify(list));
+  } catch (e) {
+    console.warn("Could not save options to localStorage:", e);
+  }
+}
+
+if (btnSaveOptions) {
+  btnSaveOptions.addEventListener('click', async () => {
+    const defaultName = `profile_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+    const name = prompt("Enter a name for this options profile:", defaultName);
+    if (!name) return;
+
+    const options = collectActiveOptions();
+    const safeId = name.replace(/[^a-zA-Z0-9_\-\u0370-\u03FF]/g, '_').toLowerCase() || 'profile';
+    const profileObj = {
+      id: safeId,
+      name: name,
+      filename: `${safeId}.json`,
+      savedAt: new Date().toISOString(),
+      options: options
+    };
+
+    // 1. Always save to LocalStorage immediately
+    saveLocalOptionsProfile(profileObj);
+
+    // 2. Safely attempt to save to backend API if available
+    let savedToBackend = false;
+    try {
+      const res = await fetch('/api/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, options })
+      });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) savedToBackend = true;
+      }
+    } catch (e) {}
+
+    if (savedToBackend) {
+      alert(`✓ Settings saved successfully to ./temp/saved/options/${profileObj.filename}`);
+    } else {
+      downloadFile(`${safeId}.json`, JSON.stringify(profileObj, null, 2), 'application/json');
+      alert(`✓ Settings saved to browser storage and exported as "${safeId}.json"!`);
+    }
+  });
+}
+
+async function renderSavedOptionsModal() {
+  if (!optionsLoadModal || !savedOptionsList) return;
+  savedOptionsList.innerHTML = '<li class="text-dim text-xs">Loading profiles...</li>';
+  optionsLoadModal.style.display = 'flex';
+
+  const profilesMap = new Map();
+
+  // 1. Load from LocalStorage
+  const localList = getLocalSavedOptions();
+  localList.forEach(p => {
+    if (p && p.id) profilesMap.set(p.id, p);
+  });
+
+  // 2. Try loading from server if available
+  try {
+    const res = await fetch('/api/options');
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.profiles)) {
+        data.profiles.forEach(p => {
+          if (p && p.id) profilesMap.set(p.id, p);
+        });
+      }
+    }
+  } catch (err) {}
+
+  const allProfiles = Array.from(profilesMap.values());
+
+  if (allProfiles.length > 0) {
+    savedOptionsList.innerHTML = '';
+    allProfiles.forEach(p => {
+      const li = document.createElement('li');
+      li.className = 'saved-option-item';
+
+      const info = document.createElement('div');
+      info.className = 'saved-option-info';
+      const dateStr = p.savedAt ? new Date(p.savedAt).toLocaleString() : '';
+      info.innerHTML = `<span class="saved-option-name">${p.name}</span><span class="saved-option-date">${dateStr} (${p.filename})</span>`;
+
+      const btnLoad = document.createElement('button');
+      btnLoad.type = 'button';
+      btnLoad.className = 'btn-tool-sm btn-tool-active';
+      btnLoad.textContent = 'RESTORE';
+      btnLoad.addEventListener('click', () => {
+        applyOptionsProfile(p.options);
+        optionsLoadModal.style.display = 'none';
+        alert(`✓ Restored settings from "${p.name}"!`);
+      });
+
+      li.appendChild(info);
+      li.appendChild(btnLoad);
+      savedOptionsList.appendChild(li);
+    });
+  } else {
+    savedOptionsList.innerHTML = '<li class="empty-swatches-hint">No saved profiles found.</li>';
+  }
+}
+
+if (btnLoadOptions) {
+  btnLoadOptions.addEventListener('click', () => renderSavedOptionsModal());
+}
+if (btnOptionsModalClose) btnOptionsModalClose.addEventListener('click', () => optionsLoadModal.style.display = 'none');
+if (btnOptionsModalCancel) btnOptionsModalCancel.addEventListener('click', () => optionsLoadModal.style.display = 'none');
+
+if (btnBrowseOptionsFile && optionsFileInput) {
+  btnBrowseOptionsFile.addEventListener('click', () => {
+    optionsFileInput.value = '';
+    optionsFileInput.click();
+  });
+}
+
+if (optionsFileInput) {
+  optionsFileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          const opts = parsed.options || parsed;
+          applyOptionsProfile(opts);
+          if (optionsLoadModal) optionsLoadModal.style.display = 'none';
+          alert(`✓ Restored settings from local file "${file.name}"!`);
+        } catch (err) {
+          alert("Error parsing JSON options file: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+  });
+}
 
 window.addEventListener('mousemove', (e) => {
   if (!isEyedropperActive || !rawImageElement) {
@@ -2330,3 +3507,7 @@ window.addEventListener('keydown', (e) => {
     }
   }
 });
+
+// INITIAL STARTUP: LOAD SAVED GPL PALETTES FROM ./temp/saved/palettes/
+loadSavedPalettes();
+

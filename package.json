@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Zero-Mixels AI Pixel Art Pipeline & Studio",
   "scripts": {
-    "dev": "npx -y serve app -l 8080",
-    "start": "npx -y serve app -l 8080"
+    "dev": "node server.js",
+    "start": "node server.js"
   },
   "keywords": [
     "pixel-art",
