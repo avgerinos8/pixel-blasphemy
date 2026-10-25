@@ -381,6 +381,130 @@ const btnCopyAdjustments = document.getElementById('btnCopyAdjustments');
 const btnPasteAdjustments = document.getElementById('btnPasteAdjustments');
 const btnApplyAdjustmentsAll = document.getElementById('btnApplyAdjustmentsAll');
 
+// =============================================================================
+// IN-PAGE CUSTOM CYBERPUNK CONFIRMATION & ALERT MODAL SYSTEM
+// =============================================================================
+const customConfirmModal = document.getElementById('customConfirmModal');
+const customModalTitle = document.getElementById('customModalTitle');
+const customModalMessage = document.getElementById('customModalMessage');
+const customModalDetails = document.getElementById('customModalDetails');
+const customModalIcon = document.getElementById('customModalIcon');
+const btnCustomModalConfirm = document.getElementById('btnCustomModalConfirm');
+const btnCustomModalCancel = document.getElementById('btnCustomModalCancel');
+const btnCustomModalClose = document.getElementById('btnCustomModalClose');
+
+let activeModalResolve = null;
+
+function showConfirmModal({
+  title = 'CONFIRM ACTION',
+  message = '',
+  details = '',
+  confirmText = 'CONFIRM',
+  cancelText = 'CANCEL',
+  icon = '&#9888;',
+  danger = false
+} = {}) {
+  return new Promise((resolve) => {
+    if (!customConfirmModal) {
+      resolve(window.confirm(message));
+      return;
+    }
+
+    activeModalResolve = resolve;
+    const dialog = customConfirmModal.querySelector('.custom-modal-dialog');
+    if (dialog) dialog.classList.toggle('danger-mode', !!danger);
+
+    customModalTitle.textContent = title;
+    customModalMessage.textContent = message;
+    customModalIcon.innerHTML = icon;
+
+    if (details) {
+      customModalDetails.textContent = details;
+      customModalDetails.style.display = 'block';
+    } else {
+      customModalDetails.style.display = 'none';
+    }
+
+    btnCustomModalConfirm.textContent = confirmText;
+    btnCustomModalCancel.textContent = cancelText;
+    btnCustomModalCancel.style.display = 'inline-block';
+
+    customConfirmModal.style.display = 'flex';
+    btnCustomModalConfirm.focus();
+  });
+}
+
+function showAlertModal({
+  title = 'NOTICE',
+  message = '',
+  details = '',
+  okText = 'OK',
+  icon = '&#9432;',
+  danger = false
+} = {}) {
+  return new Promise((resolve) => {
+    if (!customConfirmModal) {
+      window.alert(message);
+      resolve();
+      return;
+    }
+
+    activeModalResolve = () => resolve();
+    const dialog = customConfirmModal.querySelector('.custom-modal-dialog');
+    if (dialog) dialog.classList.toggle('danger-mode', !!danger);
+
+    customModalTitle.textContent = title;
+    customModalMessage.textContent = message;
+    customModalIcon.innerHTML = icon;
+
+    if (details) {
+      customModalDetails.textContent = details;
+      customModalDetails.style.display = 'block';
+    } else {
+      customModalDetails.style.display = 'none';
+    }
+
+    btnCustomModalConfirm.textContent = okText;
+    btnCustomModalCancel.style.display = 'none';
+
+    customConfirmModal.style.display = 'flex';
+    btnCustomModalConfirm.focus();
+  });
+}
+
+function closeCustomModal(result) {
+  if (customConfirmModal) {
+    customConfirmModal.style.display = 'none';
+  }
+  if (activeModalResolve) {
+    const fn = activeModalResolve;
+    activeModalResolve = null;
+    fn(result);
+  }
+}
+
+if (btnCustomModalConfirm) {
+  btnCustomModalConfirm.addEventListener('click', () => closeCustomModal(true));
+}
+if (btnCustomModalCancel) {
+  btnCustomModalCancel.addEventListener('click', () => closeCustomModal(false));
+}
+if (btnCustomModalClose) {
+  btnCustomModalClose.addEventListener('click', () => closeCustomModal(false));
+}
+
+window.addEventListener('keydown', (e) => {
+  if (customConfirmModal && customConfirmModal.style.display !== 'none') {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeCustomModal(false);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      closeCustomModal(true);
+    }
+  }
+});
+
 // TABS NAVIGATION
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -419,7 +543,52 @@ function syncSliderAndNum(slider, numBox, callback) {
 // SETUP SYNCED CONTROLS (PIXEL SNAPPER)
 syncSliderAndNum(outlineWeight, outlineWeightNum, () => triggerPreviewDebounced());
 syncSliderAndNum(edgeSensitivity, edgeSensitivityNum, () => triggerPreviewDebounced());
-function handleColorBudgetOrKMeansChange() {
+
+let previousColorCount = parseInt(colorCount.value) || 16;
+let previousUnfakeMaxColors = parseInt(unfakeMaxColors.value) || 32;
+let isKMeansIterRefineActive = false;
+
+function hasActiveCustomPalette() {
+  const pChoice = currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value;
+  return (
+    pChoice === 'customEyedropper' ||
+    (PALETTES.customEyedropper && PALETTES.customEyedropper.length > 0) ||
+    (isEyedropperActive && pickedEyedropperColors && pickedEyedropperColors.length > 0)
+  );
+}
+
+async function handleColorBudgetChange(newVal, isUnfake = false) {
+  const prevVal = isUnfake ? previousUnfakeMaxColors : previousColorCount;
+  if (newVal === prevVal) return;
+
+  if (hasActiveCustomPalette()) {
+    const confirmed = await showConfirmModal({
+      title: 'RESET CUSTOM PALETTE?',
+      message: `You currently have an active custom palette. Changing Color Budget to ${newVal} will clear your custom palette edits and generate a fresh Auto K-Means palette from the active image.`,
+      details: `Custom colors will be replaced with ${newVal} auto-calculated colors.`,
+      confirmText: 'RESET PALETTE',
+      cancelText: 'KEEP CUSTOM',
+      danger: true
+    });
+
+    if (!confirmed) {
+      if (isUnfake) {
+        unfakeMaxColors.value = previousUnfakeMaxColors;
+        unfakeMaxColorsNum.value = previousUnfakeMaxColors;
+      } else {
+        colorCount.value = previousColorCount;
+        colorCountNum.value = previousColorCount;
+      }
+      return;
+    }
+  }
+
+  if (isUnfake) {
+    previousUnfakeMaxColors = newVal;
+  } else {
+    previousColorCount = newVal;
+  }
+
   [paletteSelect, unfakePaletteSelect].forEach(sel => {
     if (!sel) return;
     const opt = sel.querySelector('option[value="customEyedropper"]');
@@ -434,14 +603,21 @@ function handleColorBudgetOrKMeansChange() {
   triggerPreviewDebounced();
 }
 
-syncSliderAndNum(colorCount, colorCountNum, () => handleColorBudgetOrKMeansChange());
-syncSliderAndNum(kmeansIter, kmeansIterNum, () => handleColorBudgetOrKMeansChange());
+function handleKMeansIterChange() {
+  // Do NOT clear or reset the palette!
+  // Instead, activate refinement pass using existing colors as initial centroids
+  isKMeansIterRefineActive = true;
+  triggerPreviewDebounced();
+}
+
+syncSliderAndNum(colorCount, colorCountNum, (val) => handleColorBudgetChange(parseInt(val) || 16, false));
+syncSliderAndNum(kmeansIter, kmeansIterNum, () => handleKMeansIterChange());
 syncSliderAndNum(tezumieStrength, tezumieStrengthNum, () => triggerPreviewDebounced());
 
 // SETUP SYNCED CONTROLS (UNFAKE.JS)
 syncSliderAndNum(unfakeDomThreshold, unfakeDomThresholdNum, () => triggerPreviewDebounced());
 syncSliderAndNum(unfakeAlphaThreshold, unfakeAlphaThresholdNum, () => triggerPreviewDebounced());
-syncSliderAndNum(unfakeMaxColors, unfakeMaxColorsNum, () => handleColorBudgetOrKMeansChange());
+syncSliderAndNum(unfakeMaxColors, unfakeMaxColorsNum, (val) => handleColorBudgetChange(parseInt(val) || 32, true));
 
 // TEZUMIE TOGGLE & METHOD
 tezumieToggle.addEventListener('change', () => {
@@ -884,17 +1060,16 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
       tezumieStrength.value = DEFAULTS.tezumieStrength;
       tezumieStrengthNum.value = DEFAULTS.tezumieStrength;
     } else if (param === 'colorCount') {
-      colorCount.value = DEFAULTS.colorCount;
-      colorCountNum.value = DEFAULTS.colorCount;
-      handleColorBudgetOrKMeansChange();
+      await handleColorBudgetChange(DEFAULTS.colorCount, false);
     } else if (param === 'kmeansIter') {
       kmeansIter.value = DEFAULTS.kmeansIter;
       kmeansIterNum.value = DEFAULTS.kmeansIter;
-      handleColorBudgetOrKMeansChange();
+      handleKMeansIterChange();
     } else if (param === 'palette') {
       paletteSelect.value = DEFAULTS.palette;
       unfakePaletteSelect.value = DEFAULTS.palette;
-      handleColorBudgetOrKMeansChange();
+      updatePalettePreview();
+      triggerPreviewDebounced();
     } else if (param === 'unfakeSnapGrid') {
       unfakeSnapGrid.checked = DEFAULTS.unfakeSnapGrid;
     } else if (param === 'unfakeElasticGrid') {
@@ -913,13 +1088,12 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
       unfakeAutoColors.checked = DEFAULTS.unfakeAutoColors;
       unfakeMaxColorsRow.style.opacity = '1';
     } else if (param === 'unfakeMaxColors') {
-      unfakeMaxColors.value = DEFAULTS.unfakeMaxColors;
-      unfakeMaxColorsNum.value = DEFAULTS.unfakeMaxColors;
-      handleColorBudgetOrKMeansChange();
+      await handleColorBudgetChange(DEFAULTS.unfakeMaxColors, true);
     } else if (param === 'unfakePalette') {
       unfakePaletteSelect.value = DEFAULTS.unfakePalette;
       paletteSelect.value = DEFAULTS.unfakePalette;
-      handleColorBudgetOrKMeansChange();
+      updatePalettePreview();
+      triggerPreviewDebounced();
     }
 
     updateDimensionsUI();
@@ -972,7 +1146,11 @@ function loadPaletteReference(file) {
       const text = ev.target.result;
       const parsed = parseGPLContent(text);
       if (!parsed.colors || parsed.colors.length === 0) {
-        alert("No valid RGB colors found in the selected .gpl file.");
+        showAlertModal({
+          title: 'GPL IMPORT ERROR',
+          message: 'No valid RGB colors found in the selected .gpl file.',
+          danger: true
+        });
         return;
       }
 
@@ -1059,7 +1237,11 @@ function loadPaletteReference(file) {
       }
 
       if (pixels.length === 0) {
-        alert("The uploaded palette image appears to be completely transparent.");
+        showAlertModal({
+          title: 'TRANSPARENT PALETTE',
+          message: 'The uploaded palette image appears to be completely transparent.',
+          danger: true
+        });
         return;
       }
 
@@ -1815,10 +1997,49 @@ async function updatePreviewAsync() {
       if (PALETTES['reference'] && PALETTES['reference'].length > 0) {
         palette = PALETTES['reference'];
       } else if (paletteRefPixels && paletteRefPixels.length > 0) {
-        palette = runKMeans(paletteRefPixels, kColors, iterations);
+        const initCentroids = (isKMeansIterRefineActive && currentActivePalette && currentActivePalette.length === kColors) ? currentActivePalette : null;
+        palette = runKMeans(paletteRefPixels, kColors, iterations, initCentroids);
+      }
+    } else if (pChoice === 'customEyedropper' && PALETTES.customEyedropper && PALETTES.customEyedropper.length > 0) {
+      if (isKMeansIterRefineActive) {
+        const imgData = offCtx.getImageData(0, 0, targetW, targetH);
+        const data = imgData.data;
+        const pixels = [];
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] > 64) {
+            pixels.push([data[i], data[i + 1], data[i + 2]]);
+          }
+        }
+        if (pixels.length > 0) {
+          palette = runKMeans(pixels, PALETTES.customEyedropper.length, iterations, PALETTES.customEyedropper);
+          PALETTES.customEyedropper = palette.map(c => [...c]);
+          pickedEyedropperColors = palette.map(c => [...c]);
+          if (isEyedropperActive) updateEyedropperUI();
+          renderSwatches(palette);
+        } else {
+          palette = PALETTES.customEyedropper;
+        }
+      } else {
+        palette = PALETTES.customEyedropper;
       }
     } else if (PALETTES[pChoice]) {
-      palette = PALETTES[pChoice];
+      if (isKMeansIterRefineActive) {
+        const imgData = offCtx.getImageData(0, 0, targetW, targetH);
+        const data = imgData.data;
+        const pixels = [];
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] > 64) {
+            pixels.push([data[i], data[i + 1], data[i + 2]]);
+          }
+        }
+        if (pixels.length > 0) {
+          palette = runKMeans(pixels, PALETTES[pChoice].length, iterations, PALETTES[pChoice]);
+        } else {
+          palette = PALETTES[pChoice];
+        }
+      } else {
+        palette = PALETTES[pChoice];
+      }
     } else {
       const imgData = offCtx.getImageData(0, 0, targetW, targetH);
       const data = imgData.data;
@@ -1840,7 +2061,10 @@ async function updatePreviewAsync() {
       }
 
       if (pixels.length > 0) {
-        palette = runKMeans(pixels, kColors, iterations);
+        const initCentroids = (isKMeansIterRefineActive && currentActivePalette && currentActivePalette.length === kColors)
+          ? currentActivePalette
+          : null;
+        palette = runKMeans(pixels, kColors, iterations, initCentroids);
       }
     }
 
@@ -1995,15 +2219,25 @@ function rgbToHex(r, g, b) {
   }).join('');
 }
 
-function runKMeans(pixels, k, iterations) {
-  const actualK = Math.min(k, pixels.length);
-  if (actualK <= 0) return [];
-
+function runKMeans(pixels, k, iterations, initialCentroids = null) {
+  if (!pixels || pixels.length === 0) return [];
   const centroids = [];
-  const step = Math.max(1, Math.floor(pixels.length / actualK));
-  for (let i = 0; i < actualK; i++) {
-    centroids.push(pixels[(i * step) % pixels.length].slice());
+
+  if (initialCentroids && initialCentroids.length > 0) {
+    for (let i = 0; i < initialCentroids.length; i++) {
+      centroids.push(initialCentroids[i].slice());
+    }
+  } else {
+    const actualK = Math.min(k, pixels.length);
+    if (actualK <= 0) return [];
+    const step = Math.max(1, Math.floor(pixels.length / actualK));
+    for (let i = 0; i < actualK; i++) {
+      centroids.push(pixels[(i * step) % pixels.length].slice());
+    }
   }
+
+  const actualK = centroids.length;
+  if (actualK <= 0) return [];
 
   for (let it = 0; it < iterations; it++) {
     const clusters = Array.from({ length: actualK }, () => []);
@@ -2731,8 +2965,14 @@ function initAdjustmentsEvents() {
 
   // 3. APPLY ADJUSTMENTS TO ALL
   if (btnApplyAdjustmentsAll) {
-    btnApplyAdjustmentsAll.addEventListener('click', () => {
-      const confirmed = confirm("Apply these adjustments to all images in the batch queue?");
+    btnApplyAdjustmentsAll.addEventListener('click', async () => {
+      const confirmed = await showConfirmModal({
+        title: 'APPLY ADJUSTMENTS TO ALL',
+        message: 'Apply current Tone & Curves adjustments to all images in the batch queue?',
+        details: `${batchFiles ? batchFiles.length : 1} image(s) will receive this adjustment profile.`,
+        confirmText: 'APPLY TO ALL',
+        cancelText: 'CANCEL'
+      });
       if (!confirmed) return;
 
       const serialized = JSON.stringify(currentAdjustments);
@@ -3131,7 +3371,10 @@ btnEyedropperClear.addEventListener('click', () => {
 
 btnFinishPalette.addEventListener('click', () => {
   if (pickedEyedropperColors.length === 0) {
-    alert("Please pick at least 1 color from the image first!");
+    showAlertModal({
+      title: 'EMPTY PALETTE',
+      message: 'Please pick at least 1 color from the image first!'
+    });
     return;
   }
   applyLiveCustomPalette();
@@ -3295,7 +3538,10 @@ async function loadSavedPalettes() {
 if (btnSaveCustomPalette) {
   btnSaveCustomPalette.addEventListener('click', async () => {
     if (pickedEyedropperColors.length === 0) {
-      alert("Custom palette is empty! Sample colors first.");
+      showAlertModal({
+        title: 'EMPTY PALETTE',
+        message: 'Custom palette is empty! Sample colors from the image first.'
+      });
       return;
     }
 
@@ -4148,10 +4394,16 @@ if (btnSaveOptions) {
     } catch (e) {}
 
     if (savedToBackend) {
-      alert(`✓ Settings saved successfully to ./temp/saved/options/${profileObj.filename}`);
+      showAlertModal({
+        title: 'SETTINGS SAVED',
+        message: `Settings saved successfully to ./temp/saved/options/${profileObj.filename}`
+      });
     } else {
       downloadFile(`${safeId}.json`, JSON.stringify(profileObj, null, 2), 'application/json');
-      alert(`✓ Settings saved to browser storage and exported as "${safeId}.json"!`);
+      showAlertModal({
+        title: 'SETTINGS EXPORTED',
+        message: `Settings saved to browser storage and exported as "${safeId}.json"!`
+      });
     }
   });
 }
@@ -4203,7 +4455,10 @@ async function renderSavedOptionsModal() {
       btnLoad.addEventListener('click', () => {
         applyOptionsProfile(p.options);
         optionsLoadModal.style.display = 'none';
-        alert(`✓ Restored settings from "${p.name}"!`);
+        showAlertModal({
+          title: 'SETTINGS RESTORED',
+          message: `Restored settings from "${p.name}"!`
+        });
       });
 
       li.appendChild(info);
@@ -4239,9 +4494,16 @@ if (optionsFileInput) {
           const opts = parsed.options || parsed;
           applyOptionsProfile(opts);
           if (optionsLoadModal) optionsLoadModal.style.display = 'none';
-          alert(`✓ Restored settings from local file "${file.name}"!`);
+          showAlertModal({
+            title: 'SETTINGS RESTORED',
+            message: `Restored settings from local file "${file.name}"!`
+          });
         } catch (err) {
-          alert("Error parsing JSON options file: " + err.message);
+          showAlertModal({
+            title: 'JSON ERROR',
+            message: 'Error parsing JSON options file: ' + err.message,
+            danger: true
+          });
         }
       };
       reader.readAsText(file);

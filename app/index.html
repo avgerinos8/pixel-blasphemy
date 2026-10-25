@@ -1239,6 +1239,25 @@ pip install -r requirements.txt</code></pre>
         <button type="button" class="btn btn-tool-sm" id="btnOptionsModalCancel">CLOSE</button>
       </div>
     </div>
+  <!-- CUSTOM IN-PAGE CYBER CONFIRMATION & ALERT MODAL -->
+  <div class="custom-modal-overlay" id="customConfirmModal" style="display:none;">
+    <div class="custom-modal-dialog">
+      <div class="custom-modal-header" id="customModalHeader">
+        <div class="custom-modal-header-left">
+          <span class="custom-modal-icon" id="customModalIcon">&#9888;</span>
+          <span class="custom-modal-title" id="customModalTitle">CONFIRM ACTION</span>
+        </div>
+        <button type="button" class="custom-modal-close" id="btnCustomModalClose" title="Close">&#10005;</button>
+      </div>
+      <div class="custom-modal-body">
+        <div class="custom-modal-message" id="customModalMessage">Are you sure?</div>
+        <div class="custom-modal-details" id="customModalDetails" style="display:none;"></div>
+      </div>
+      <div class="custom-modal-footer" id="customModalFooter">
+        <button type="button" class="btn btn-secondary custom-modal-btn" id="btnCustomModalCancel">CANCEL</button>
+        <button type="button" class="btn btn-primary custom-modal-btn" id="btnCustomModalConfirm">CONFIRM</button>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>
