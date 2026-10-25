@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -10,6 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
   <!-- Bundled Tezumie Image-to-Pixel Engine -->
   <script src="vendor/image-to-pixel.min.js"></script>
+  <!-- Unfake.js Intelligent Scale & Processing Engine -->
+  <script type="module" src="unfake-engine.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -49,19 +51,32 @@
           <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
           <input type="file" id="paletteFileInput" accept="image/*" style="display:none;">
 
-          <!-- 2 COLUMNS OF CONTROLS -->
-          <div class="controls-columns">
+          <!-- ENGINE MODE SWITCHER (PIXEL SNAPPER VS UNFAKE.JS) -->
+          <div class="engine-switch-container">
+            <div class="engine-switch" id="engineSwitch">
+              <button type="button" class="engine-btn active" data-engine="snapper" id="btnEngineSnapper" title="Pixel Snapper: Geometric snapping, edge preservation & shader dither">
+                <span class="engine-icon">&#9889;</span> PIXEL SNAPPER
+              </button>
+              <button type="button" class="engine-btn" data-engine="unfake" id="btnEngineUnfake" title="Unfake.js: Intelligent scale detection, content-aware & dominant color processing">
+                <span class="engine-icon">&#127744;</span> UNFAKE.JS
+              </button>
+            </div>
+          </div>
+
+          <!-- 2 COLUMNS OF CONTROLS (ENGINE 1: PIXEL SNAPPER) -->
+          <div class="controls-columns engine-panel" id="panelSnapperControls">
             <!-- SUB-COLUMN 1: GEOMETRY, OUTLINES & ALPHA -->
             <div class="controls-col">
-              <!-- DOWNSCALE FACTOR -->
+              <!-- DOWNSCALE FACTOR (DEFAULT: AUTO VIA UNFAKE SCALE DETECTION) -->
               <div class="control-box">
                 <div class="label-row">
                   <label>DOWNSCALE:</label>
                   <span class="dim-badge" id="targetDimText">Waiting...</span>
-                  <button type="button" class="btn-reset-param" data-param="divisor" title="Reset Downscale to 1x">&#8634;</button>
+                  <button type="button" class="btn-reset-param" data-param="divisor" title="Reset Downscale to AUTO">&#8634;</button>
                 </div>
                 <div class="scale-btn-group" id="scaleGroup">
-                  <button class="scale-btn active" data-divisor="1">1x</button>
+                  <button class="scale-btn active" data-divisor="auto" title="Intelligent Auto Scale Detection (unfake.js)">AUTO</button>
+                  <button class="scale-btn" data-divisor="1" title="Bypass Downscale (1x)">1x</button>
                   <button class="scale-btn" data-divisor="2">/2</button>
                   <button class="scale-btn" data-divisor="4">/4</button>
                   <button class="scale-btn" data-divisor="8">/8</button>
@@ -215,6 +230,202 @@
                   <li class="empty-hint">Drop multiple images here to batch process.</li>
                 </ul>
                 <button class="btn btn-accent w-full" id="btnProcessBatch" disabled>BATCH PROCESS ALL</button>
+              </details>
+            </div>
+          </div>
+
+          <!-- 2 COLUMNS OF CONTROLS (ENGINE 2: UNFAKE.JS STUDIO) -->
+          <div class="controls-columns engine-panel" id="panelUnfakeControls" style="display:none;">
+            <!-- SUB-COLUMN 1: SCALE DETECTION, GRID & DOWNSCALING -->
+            <div class="controls-col">
+              <!-- DOWNSCALE FACTOR -->
+              <div class="control-box">
+                <div class="label-row">
+                  <label>DOWNSCALE:</label>
+                  <span class="dim-badge" id="unfakeTargetDimText">Waiting...</span>
+                  <button type="button" class="btn-reset-param" data-param="unfakeDivisor" title="Reset Downscale to AUTO">&#8634;</button>
+                </div>
+                <div class="scale-btn-group" id="unfakeScaleGroup">
+                  <button class="scale-btn active" data-divisor="auto" title="Intelligent Auto Scale Detection (unfake.js)">AUTO</button>
+                  <button class="scale-btn" data-divisor="1" title="Bypass Downscale (1x)">1x</button>
+                  <button class="scale-btn" data-divisor="2">/2</button>
+                  <button class="scale-btn" data-divisor="4">/4</button>
+                  <button class="scale-btn" data-divisor="8">/8</button>
+                  <button class="scale-btn" data-divisor="16">/16</button>
+                </div>
+              </div>
+
+              <!-- SCALE DETECTION ALGORITHM -->
+              <div class="control-box">
+                <div class="label-row">
+                  <label for="unfakeDetectMethod">SCALE DETECTOR:</label>
+                  <span class="badge-mini" id="unfakeWasmBadge">RUST WASM</span>
+                </div>
+                <select id="unfakeDetectMethod" class="compact-select">
+                  <option value="auto" selected>Auto (Runs &rarr; Edge &rarr; Fractional Grid)</option>
+                  <option value="edge">Edge-Aware Tiled (Best for AI Art)</option>
+                  <option value="edge_legacy">Edge-Aware Single ROI</option>
+                  <option value="runs">Runs-Based (Clean Integer Art)</option>
+                  <option value="manual">Manual Scale Factor</option>
+                </select>
+
+                <div class="scale-stat-badge" id="unfakeScaleStatBadge" style="margin-top:4px;">
+                  <span>STATUS:</span>
+                  <strong id="unfakeScaleStatText">Auto-Detecting...</strong>
+                </div>
+
+                <div class="synced-field" id="unfakeManualScaleRow" style="margin-top:6px; display:none;">
+                  <div class="label-row">
+                    <label for="unfakeManualScale">MANUAL SCALE:</label>
+                    <div class="stepper-group">
+                      <button type="button" class="btn-step" data-target="unfakeManualScale" data-step="-0.5">-</button>
+                      <input type="number" id="unfakeManualScale" min="1.0" max="64.0" step="0.25" value="8.0" class="num-box">
+                      <button type="button" class="btn-step" data-target="unfakeManualScale" data-step="0.5">+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- GRID ALIGNMENT & ELASTIC GRID -->
+              <div class="control-box">
+                <div class="checkbox-row">
+                  <label><input type="checkbox" id="unfakeSnapGrid" checked> SNAP TO GRID (AUTO-CROP)</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakeSnapGrid" title="Reset Snap to Grid">&#8634;</button>
+                </div>
+                <div class="checkbox-row" style="margin-top:4px;">
+                  <label><input type="checkbox" id="unfakeElasticGrid" checked> ELASTIC GRID (JITTER ADAPT)</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakeElasticGrid" title="Reset Elastic Grid">&#8634;</button>
+                </div>
+              </div>
+
+              <!-- DOWNSCALE METHOD & DOMINANT THRESHOLD -->
+              <div class="control-box">
+                <div class="label-row">
+                  <label for="unfakeDownscaleMethod">DOWNSCALE METHOD:</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakeDownscaleMethod" title="Reset Downscale Method">&#8634;</button>
+                </div>
+                <select id="unfakeDownscaleMethod" class="compact-select">
+                  <option value="dominant" selected>Dominant Color (Standard Unfake)</option>
+                  <option value="content-adaptive">Content-Adaptive (High Detail)</option>
+                  <option value="median">Median Color</option>
+                  <option value="mode">Mode (Most Frequent)</option>
+                  <option value="nearest">Nearest Neighbor</option>
+                  <option value="mean">Mean (Average)</option>
+                  <option value="qvote">Quantize + Vote (Canonical)</option>
+                </select>
+
+                <div class="synced-field" id="unfakeDomThresholdRow" style="margin-top:6px;">
+                  <div class="label-row">
+                    <label for="unfakeDomThreshold">DOMINANT THRESHOLD:</label>
+                    <div class="stepper-group">
+                      <button type="button" class="btn-step" data-target="unfakeDomThresholdNum" data-step="-0.05">-</button>
+                      <input type="number" id="unfakeDomThresholdNum" min="0.05" max="0.50" step="0.05" value="0.15" class="num-box">
+                      <button type="button" class="btn-step" data-target="unfakeDomThresholdNum" data-step="0.05">+</button>
+                    </div>
+                  </div>
+                  <input type="range" id="unfakeDomThreshold" min="0.05" max="0.50" step="0.05" value="0.15">
+                  <div class="ticks"><span>0.05 (Sensitive)</span><span>0.15 (Default)</span><span>0.50 (Strict)</span></div>
+                </div>
+              </div>
+
+              <!-- DOWNLOAD PREVIEW BUTTON -->
+              <div class="action-box">
+                <button class="btn btn-primary btn-download" id="btnUnfakeDownload" disabled>
+                  &#128190; DOWNLOAD ASSET <span id="unfakeDownloadNameLabel"></span>
+                </button>
+              </div>
+            </div>
+
+            <!-- SUB-COLUMN 2: CLEANUP, COLOR BUDGET & PALETTE -->
+            <div class="controls-col">
+              <!-- CLEANUP & ALPHA BINARIZATION -->
+              <div class="control-box">
+                <div class="checkbox-row">
+                  <label><input type="checkbox" id="unfakeMorph"> MORPHOLOGICAL CLEANUP (OPEN/CLOSE)</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakeMorph" title="Reset Morphological Cleanup">&#8634;</button>
+                </div>
+                <div class="checkbox-row" style="margin-top:4px;">
+                  <label><input type="checkbox" id="unfakeJaggy"> JAGGY CLEANER (DIAGONAL PIXELS)</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakeJaggy" title="Reset Jaggy Cleaner">&#8634;</button>
+                </div>
+                <div class="checkbox-row" style="margin-top:4px;">
+                  <label><input type="checkbox" id="unfakeAlphaBinarize" checked> HARD ALPHA (BINARY MASK)</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakeAlpha" title="Reset Alpha Binarize">&#8634;</button>
+                </div>
+
+                <div class="synced-field" id="unfakeAlphaThresholdRow" style="margin-top:4px;">
+                  <div class="label-row">
+                    <label for="unfakeAlphaThreshold">ALPHA THRESHOLD:</label>
+                    <div class="stepper-group">
+                      <button type="button" class="btn-step" data-target="unfakeAlphaThresholdNum" data-step="-16">-</button>
+                      <input type="number" id="unfakeAlphaThresholdNum" min="1" max="254" step="8" value="128" class="num-box">
+                      <button type="button" class="btn-step" data-target="unfakeAlphaThresholdNum" data-step="16">+</button>
+                    </div>
+                  </div>
+                  <input type="range" id="unfakeAlphaThreshold" min="1" max="254" step="8" value="128">
+                  <div class="ticks"><span>1 (Soft)</span><span>128 (Balanced)</span><span>254 (Solid)</span></div>
+                </div>
+              </div>
+
+              <!-- COLOR BUDGET & QUANTIZATION -->
+              <div class="control-box">
+                <div class="checkbox-row" style="margin-bottom:4px;">
+                  <label><input type="checkbox" id="unfakeAutoColors"> AUTO DETECT COLOR COUNT</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakeAutoColors" title="Reset Auto Colors">&#8634;</button>
+                </div>
+
+                <div class="synced-field" id="unfakeMaxColorsRow">
+                  <div class="label-row">
+                    <label for="unfakeMaxColors">MAX COLORS:</label>
+                    <button type="button" class="btn-reset-param" data-param="unfakeMaxColors" title="Reset Max Colors to 32">&#8634;</button>
+                    <div class="stepper-group">
+                      <button type="button" class="btn-step" data-target="unfakeMaxColorsNum" data-step="-2">-</button>
+                      <input type="number" id="unfakeMaxColorsNum" min="4" max="1024" step="2" value="32" class="num-box">
+                      <button type="button" class="btn-step" data-target="unfakeMaxColorsNum" data-step="2">+</button>
+                    </div>
+                  </div>
+                  <input type="range" id="unfakeMaxColors" min="4" max="1024" step="4" value="32">
+                  <div class="ticks"><span>4</span><span>32</span><span>64</span><span>1024 (No Reduction)</span></div>
+                </div>
+              </div>
+
+              <!-- PALETTE SOURCE (SHARED INTEGRATION) -->
+              <div class="control-box palette-box">
+                <div class="label-row">
+                  <label for="unfakePaletteSelect">PALETTE SOURCE:</label>
+                  <button type="button" class="btn-reset-param" data-param="unfakePalette" title="Reset Palette Source">&#8634;</button>
+                </div>
+                <select id="unfakePaletteSelect" class="compact-select">
+                  <option value="auto" selected>Auto Quantize (Original Colors)</option>
+                  <option value="cyberpunk16">Streets of Regex Cyberpunk (16)</option>
+                  <option value="endesga32">Endesga 32 (Indie Standard)</option>
+                  <option value="db32">DawnBringer 32 (Dark Retro)</option>
+                  <option value="pico8">Pico-8 (16 Colors)</option>
+                  <option value="gameboy">Game Boy Classic (4 Shades)</option>
+                </select>
+
+                <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnUnfakeStartEyedropper" title="Sample custom palette directly from original image with eyedropper">
+                  &#128394; + ADD PALETTE (EYEDROPPER)
+                </button>
+
+                <!-- ACTIVE REFERENCE PALETTE BADGE -->
+                <div class="palette-ref-badge" id="unfakePaletteRefBadge" style="display:none;">
+                  <img id="unfakePaletteRefThumb" class="palette-ref-thumb" alt="Thumb">
+                  <span id="unfakePaletteRefName" class="palette-ref-filename">palette.png</span>
+                  <button type="button" class="btn-clear-palette" id="btnUnfakeClearPaletteRef" title="Clear palette reference">&#10005; CLEAR</button>
+                </div>
+
+                <!-- SWATCH PREVIEW BAR -->
+                <div class="palette-preview" id="unfakePalettePreview"></div>
+              </div>
+
+              <!-- BATCH QUEUE ACCORDION -->
+              <details class="batch-drawer" id="unfakeBatchDrawer">
+                <summary class="batch-summary">&#128193; BATCH FILE QUEUE (<span id="unfakeBatchCount">0</span>)</summary>
+                <ul class="batch-list" id="unfakeBatchList">
+                  <li class="empty-hint">Drop multiple images here to batch process.</li>
+                </ul>
+                <button class="btn btn-accent w-full" id="btnUnfakeProcessBatch" disabled>BATCH PROCESS ALL</button>
               </details>
             </div>
           </div>

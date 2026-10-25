@@ -1,4 +1,4 @@
-﻿// PixelBlasphemy Studio v1.5 - Pro AI Pixel Art & Snapper Pipeline
+// PixelBlasphemy Studio v1.5 - Pro AI Pixel Art & Snapper Pipeline
 
 const PALETTES = {
   auto: null,
@@ -31,7 +31,8 @@ const PALETTES = {
 };
 
 const DEFAULTS = {
-  divisor: 1,
+  engine: 'snapper',
+  divisor: 'auto',
   outlineWeight: 1.5,
   edgeSensitivity: 0.5,
   autoOutline: false,
@@ -45,17 +46,35 @@ const DEFAULTS = {
   kmeansIter: 15,
   palette: 'auto',
   zoom: 100,
-  grid: false
+  grid: false,
+
+  // Unfake.js Defaults
+  unfakeDetectMethod: 'auto',
+  unfakeManualScale: 8.0,
+  unfakeSnapGrid: true,
+  unfakeElasticGrid: true,
+  unfakeDownscaleMethod: 'dominant',
+  unfakeDomThreshold: 0.15,
+  unfakeMorph: false,
+  unfakeJaggy: false,
+  unfakeAlphaBinarize: true,
+  unfakeAlphaThreshold: 128,
+  unfakeAutoColors: false,
+  unfakeMaxColors: 32,
+  unfakePalette: 'auto'
 };
 
 // Global State
+let currentEngine = 'snapper'; // 'snapper' | 'unfake'
 let loadedFilename = "image.png";
 let rawImageElement = null;
 let currentSnappedCanvas = null;
 let currentActivePalette = null;
 let rawOffCanvas = document.createElement('canvas');
 let rawOffCtx = rawOffCanvas.getContext('2d', { willReadFrequently: true });
-let currentDivisor = 1;
+let currentDivisor = 'auto'; // 'auto' | 1 | 2 | 4 | 8 | 16
+let detectedScale = 1;
+let detectedGrid = null;
 let splitPosition = 0.5;
 let zoomPercent = 100;
 let showGrid = false;
@@ -71,7 +90,7 @@ let previewTimeout = null;
 let paletteRefPixels = null;
 let paletteRefName = "";
 
-// DOM Elements
+// DOM Elements - Shell & Viewport
 const dropZone = document.getElementById('dropZone');
 const dropPrompt = document.getElementById('dropPrompt');
 const fileInput = document.getElementById('fileInput');
@@ -87,6 +106,13 @@ const btnOpenMainImage = document.getElementById('btnOpenMainImage');
 const btnOpenPaletteImage = document.getElementById('btnOpenPaletteImage');
 const btnResetAll = document.getElementById('btnResetAll');
 
+// Engine Switcher & Containers
+const engineSwitch = document.getElementById('engineSwitch');
+const btnEngineSnapper = document.getElementById('btnEngineSnapper');
+const btnEngineUnfake = document.getElementById('btnEngineUnfake');
+const panelSnapperControls = document.getElementById('panelSnapperControls');
+const panelUnfakeControls = document.getElementById('panelUnfakeControls');
+
 const viewerToolbar = document.getElementById('viewerToolbar');
 const loadedFilenameEl = document.getElementById('loadedFilename');
 const origDimBadge = document.getElementById('origDimBadge');
@@ -101,7 +127,7 @@ const btnFitZoom = document.getElementById('btnFitZoom');
 const btnResetZoom = document.getElementById('btnResetZoom');
 const btnToggleGrid = document.getElementById('btnToggleGrid');
 
-// Scale & Synced Controls
+// Pixel Snapper Controls
 const scaleGroup = document.getElementById('scaleGroup');
 const targetDimText = document.getElementById('targetDimText');
 const outlineWeight = document.getElementById('outlineWeight');
@@ -125,10 +151,16 @@ const tezumieStrength = document.getElementById('tezumieStrength');
 const tezumieStrengthNum = document.getElementById('tezumieStrengthNum');
 const pass2Toggle = document.getElementById('pass2Toggle');
 
-// Palette DOM
+// Palette DOM (Pixel Snapper)
 const paletteSelect = document.getElementById('paletteSelect');
 const palettePreview = document.getElementById('palettePreview');
 const btnStartEyedropper = document.getElementById('btnStartEyedropper');
+const paletteRefBadge = document.getElementById('paletteRefBadge');
+const paletteRefThumb = document.getElementById('paletteRefThumb');
+const paletteRefNameEl = document.getElementById('paletteRefName');
+const btnClearPaletteRef = document.getElementById('btnClearPaletteRef');
+
+// Eyedropper HUD
 const eyedropperHud = document.getElementById('eyedropperHud');
 const eyedropperHint = document.getElementById('eyedropperHint');
 const btnEyedropperClear = document.getElementById('btnEyedropperClear');
@@ -140,10 +172,45 @@ const loupeColor = document.getElementById('loupeColor');
 const loupeHex = document.getElementById('loupeHex');
 let isEyedropperActive = false;
 let pickedEyedropperColors = [];
-const paletteRefBadge = document.getElementById('paletteRefBadge');
-const paletteRefThumb = document.getElementById('paletteRefThumb');
-const paletteRefNameEl = document.getElementById('paletteRefName');
-const btnClearPaletteRef = document.getElementById('btnClearPaletteRef');
+
+// Unfake.js Controls DOM
+const unfakeScaleGroup = document.getElementById('unfakeScaleGroup');
+const unfakeTargetDimText = document.getElementById('unfakeTargetDimText');
+const unfakeDetectMethod = document.getElementById('unfakeDetectMethod');
+const unfakeWasmBadge = document.getElementById('unfakeWasmBadge');
+const unfakeScaleStatBadge = document.getElementById('unfakeScaleStatBadge');
+const unfakeScaleStatText = document.getElementById('unfakeScaleStatText');
+const unfakeManualScaleRow = document.getElementById('unfakeManualScaleRow');
+const unfakeManualScale = document.getElementById('unfakeManualScale');
+const unfakeSnapGrid = document.getElementById('unfakeSnapGrid');
+const unfakeElasticGrid = document.getElementById('unfakeElasticGrid');
+const unfakeDownscaleMethod = document.getElementById('unfakeDownscaleMethod');
+const unfakeDomThreshold = document.getElementById('unfakeDomThreshold');
+const unfakeDomThresholdNum = document.getElementById('unfakeDomThresholdNum');
+const btnUnfakeDownload = document.getElementById('btnUnfakeDownload');
+const unfakeDownloadNameLabel = document.getElementById('unfakeDownloadNameLabel');
+
+const unfakeMorph = document.getElementById('unfakeMorph');
+const unfakeJaggy = document.getElementById('unfakeJaggy');
+const unfakeAlphaBinarize = document.getElementById('unfakeAlphaBinarize');
+const unfakeAlphaThresholdRow = document.getElementById('unfakeAlphaThresholdRow');
+const unfakeAlphaThreshold = document.getElementById('unfakeAlphaThreshold');
+const unfakeAlphaThresholdNum = document.getElementById('unfakeAlphaThresholdNum');
+const unfakeAutoColors = document.getElementById('unfakeAutoColors');
+const unfakeMaxColorsRow = document.getElementById('unfakeMaxColorsRow');
+const unfakeMaxColors = document.getElementById('unfakeMaxColors');
+const unfakeMaxColorsNum = document.getElementById('unfakeMaxColorsNum');
+const unfakePaletteSelect = document.getElementById('unfakePaletteSelect');
+const btnUnfakeStartEyedropper = document.getElementById('btnUnfakeStartEyedropper');
+const unfakePaletteRefBadge = document.getElementById('unfakePaletteRefBadge');
+const unfakePaletteRefThumb = document.getElementById('unfakePaletteRefThumb');
+const unfakePaletteRefName = document.getElementById('unfakePaletteRefName');
+const btnUnfakeClearPaletteRef = document.getElementById('btnUnfakeClearPaletteRef');
+const unfakePalettePreview = document.getElementById('unfakePalettePreview');
+const unfakeBatchDrawer = document.getElementById('unfakeBatchDrawer');
+const unfakeBatchCount = document.getElementById('unfakeBatchCount');
+const unfakeBatchList = document.getElementById('unfakeBatchList');
+const btnUnfakeProcessBatch = document.getElementById('btnUnfakeProcessBatch');
 
 // Download & Stats
 const btnDownload = document.getElementById('btnDownload');
@@ -190,7 +257,7 @@ function syncSliderAndNum(slider, numBox, callback) {
   });
 }
 
-// SETUP SYNCED CONTROLS
+// SETUP SYNCED CONTROLS (PIXEL SNAPPER)
 syncSliderAndNum(outlineWeight, outlineWeightNum, () => triggerPreviewDebounced());
 syncSliderAndNum(edgeSensitivity, edgeSensitivityNum, () => triggerPreviewDebounced());
 syncSliderAndNum(colorCount, colorCountNum, () => {
@@ -202,6 +269,11 @@ syncSliderAndNum(kmeansIter, kmeansIterNum, () => {
   triggerPreviewDebounced();
 });
 syncSliderAndNum(tezumieStrength, tezumieStrengthNum, () => triggerPreviewDebounced());
+
+// SETUP SYNCED CONTROLS (UNFAKE.JS)
+syncSliderAndNum(unfakeDomThreshold, unfakeDomThresholdNum, () => triggerPreviewDebounced());
+syncSliderAndNum(unfakeAlphaThreshold, unfakeAlphaThresholdNum, () => triggerPreviewDebounced());
+syncSliderAndNum(unfakeMaxColors, unfakeMaxColorsNum, () => triggerPreviewDebounced());
 
 // TEZUMIE TOGGLE & METHOD
 tezumieToggle.addEventListener('change', () => {
@@ -215,22 +287,96 @@ autoOutlineColor.addEventListener('input', () => triggerPreviewDebounced());
 snapAlpha.addEventListener('change', () => triggerPreviewDebounced());
 pass2Toggle.addEventListener('change', () => triggerPreviewDebounced());
 
-// SCALE BUTTONS (1x, /2, /4, /8, /16)
-scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    selectDivisor(parseInt(btn.dataset.divisor) || 1);
-    updateDimensionsUI();
-    triggerPreviewDebounced();
-  });
-});
+// ENGINE SWITCHER HANDLER
+function setEngine(engine) {
+  currentEngine = engine;
+  btnEngineSnapper.classList.toggle('active', engine === 'snapper');
+  btnEngineUnfake.classList.toggle('active', engine === 'unfake');
+  panelSnapperControls.style.display = engine === 'snapper' ? 'grid' : 'none';
+  panelUnfakeControls.style.display = engine === 'unfake' ? 'grid' : 'none';
+
+  // Sync palette selection across engines
+  if (engine === 'unfake') {
+    unfakePaletteSelect.value = paletteSelect.value;
+  } else {
+    paletteSelect.value = unfakePaletteSelect.value;
+  }
+  updatePalettePreview();
+  updateDimensionsUI();
+  triggerPreviewDebounced();
+}
+
+btnEngineSnapper.addEventListener('click', () => setEngine('snapper'));
+btnEngineUnfake.addEventListener('click', () => setEngine('unfake'));
+
+// SCALE SELECTION & SYNC LOGIC (AUTO / 1x / /2 / /4 / /8 / /16)
+function getEffectiveDivisor() {
+  if (currentDivisor === 'auto') {
+    return detectedScale > 0 ? detectedScale : 1;
+  }
+  return parseFloat(currentDivisor) || 1;
+}
 
 function selectDivisor(d) {
   currentDivisor = d;
-  btnResetZoom.title = `Reset to Native 1:1 Scale (1/${d} = ${Math.round(100/d)}%)`;
-  scaleGroup.querySelectorAll('.scale-btn').forEach(btn => {
-    btn.classList.toggle('active', parseInt(btn.dataset.divisor) === d);
+  [scaleGroup, unfakeScaleGroup].forEach(group => {
+    if (!group) return;
+    group.querySelectorAll('.scale-btn').forEach(btn => {
+      const btnDiv = btn.dataset.divisor;
+      if (d === 'auto') {
+        btn.classList.toggle('active', btnDiv === 'auto');
+      } else {
+        btn.classList.toggle('active', btnDiv == d);
+      }
+    });
   });
+
+  const eff = getEffectiveDivisor();
+  const effStr = Number.isInteger(eff) ? `${eff}` : eff.toFixed(2);
+  btnResetZoom.title = `Reset to Native 1:1 Scale (1/${effStr} = ${Math.round(100/eff)}%)`;
+  updateDimensionsUI();
 }
+
+[scaleGroup, unfakeScaleGroup].forEach(group => {
+  if (!group) return;
+  group.querySelectorAll('.scale-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = btn.dataset.divisor;
+      selectDivisor(val === 'auto' ? 'auto' : (parseInt(val) || 1));
+      triggerPreviewDebounced();
+    });
+  });
+});
+
+// UNFAKE.JS OPTIONS HANDLERS
+unfakeDetectMethod.addEventListener('change', async () => {
+  unfakeManualScaleRow.style.display = unfakeDetectMethod.value === 'manual' ? 'block' : 'none';
+  await runScaleDetection();
+  triggerPreviewDebounced();
+});
+
+unfakeManualScale.addEventListener('input', () => {
+  if (unfakeDetectMethod.value === 'manual') {
+    detectedScale = parseFloat(unfakeManualScale.value) || 1;
+    unfakeScaleStatText.textContent = `Manual: ${detectedScale}x`;
+    updateDimensionsUI();
+    triggerPreviewDebounced();
+  }
+});
+
+unfakeSnapGrid.addEventListener('change', () => triggerPreviewDebounced());
+unfakeElasticGrid.addEventListener('change', () => triggerPreviewDebounced());
+unfakeDownscaleMethod.addEventListener('change', () => triggerPreviewDebounced());
+unfakeMorph.addEventListener('change', () => triggerPreviewDebounced());
+unfakeJaggy.addEventListener('change', () => triggerPreviewDebounced());
+unfakeAlphaBinarize.addEventListener('change', () => {
+  unfakeAlphaThresholdRow.style.display = unfakeAlphaBinarize.checked ? 'block' : 'none';
+  triggerPreviewDebounced();
+});
+unfakeAutoColors.addEventListener('change', () => {
+  unfakeMaxColorsRow.style.opacity = unfakeAutoColors.checked ? '0.5' : '1';
+  triggerPreviewDebounced();
+});
 
 // TOP ACTION BUTTONS: OPEN MAIN & OPEN PALETTE
 btnOpenMainImage.addEventListener('click', () => fileInput.click());
@@ -238,46 +384,71 @@ btnOpenPaletteImage.addEventListener('click', () => paletteFileInput.click());
 
 // MASTER RESET ALL SETTINGS TO DEFAULTS
 btnResetAll.addEventListener('click', () => {
+  setEngine(DEFAULTS.engine);
   selectDivisor(DEFAULTS.divisor);
+
+  // Pixel Snapper defaults
   outlineWeight.value = DEFAULTS.outlineWeight;
   outlineWeightNum.value = DEFAULTS.outlineWeight;
   edgeSensitivity.value = DEFAULTS.edgeSensitivity;
   edgeSensitivityNum.value = DEFAULTS.edgeSensitivity;
-
   autoOutlineToggle.checked = DEFAULTS.autoOutline;
   autoOutlineColor.value = DEFAULTS.autoOutlineColor;
   snapAlpha.checked = DEFAULTS.snapAlpha;
-
   tezumieToggle.checked = DEFAULTS.tezumieEnabled;
   tezumieOptions.style.display = 'none';
   tezumieMethod.value = DEFAULTS.tezumieMethod;
   tezumieStrength.value = DEFAULTS.tezumieStrength;
   tezumieStrengthNum.value = DEFAULTS.tezumieStrength;
   pass2Toggle.checked = DEFAULTS.pass2Enabled;
-
   colorCount.value = DEFAULTS.colorCount;
   colorCountNum.value = DEFAULTS.colorCount;
   kmeansIter.value = DEFAULTS.kmeansIter;
   kmeansIterNum.value = DEFAULTS.kmeansIter;
-
   paletteSelect.value = DEFAULTS.palette;
+
+  // Unfake.js defaults
+  unfakeDetectMethod.value = DEFAULTS.unfakeDetectMethod;
+  unfakeManualScaleRow.style.display = 'none';
+  unfakeManualScale.value = DEFAULTS.unfakeManualScale;
+  unfakeSnapGrid.checked = DEFAULTS.unfakeSnapGrid;
+  unfakeElasticGrid.checked = DEFAULTS.unfakeElasticGrid;
+  unfakeDownscaleMethod.value = DEFAULTS.unfakeDownscaleMethod;
+  unfakeDomThreshold.value = DEFAULTS.unfakeDomThreshold;
+  unfakeDomThresholdNum.value = DEFAULTS.unfakeDomThreshold;
+  unfakeMorph.checked = DEFAULTS.unfakeMorph;
+  unfakeJaggy.checked = DEFAULTS.unfakeJaggy;
+  unfakeAlphaBinarize.checked = DEFAULTS.unfakeAlphaBinarize;
+  unfakeAlphaThresholdRow.style.display = 'block';
+  unfakeAlphaThreshold.value = DEFAULTS.unfakeAlphaThreshold;
+  unfakeAlphaThresholdNum.value = DEFAULTS.unfakeAlphaThreshold;
+  unfakeAutoColors.checked = DEFAULTS.unfakeAutoColors;
+  unfakeMaxColorsRow.style.opacity = '1';
+  unfakeMaxColors.value = DEFAULTS.unfakeMaxColors;
+  unfakeMaxColorsNum.value = DEFAULTS.unfakeMaxColors;
+  unfakePaletteSelect.value = DEFAULTS.unfakePalette;
+
   showGrid = DEFAULTS.grid;
   btnToggleGrid.classList.remove('btn-grid-active');
   btnToggleGrid.innerHTML = '&#9638; GRID: OFF';
+
   updatePalettePreview();
+  if (rawImageElement) {
+    runScaleDetection();
+  }
   updateDimensionsUI();
   triggerPreviewDebounced();
 });
 
 // INDIVIDUAL PARAMETER RESET BUTTONS
 document.querySelectorAll('.btn-reset-param').forEach(btn => {
-  btn.addEventListener('click', (e) => {
+  btn.addEventListener('click', async (e) => {
     e.stopPropagation();
     const param = btn.dataset.param;
 
-    if (param === 'divisor') {
+    if (param === 'divisor' || param === 'unfakeDivisor') {
       selectDivisor(DEFAULTS.divisor);
-      updateDimensionsUI();
+      if (rawImageElement) await runScaleDetection();
     } else if (param === 'outlineWeight') {
       outlineWeight.value = DEFAULTS.outlineWeight;
       outlineWeightNum.value = DEFAULTS.outlineWeight;
@@ -307,9 +478,35 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
       updatePalettePreview();
     } else if (param === 'palette') {
       paletteSelect.value = DEFAULTS.palette;
+      unfakePaletteSelect.value = DEFAULTS.palette;
+      updatePalettePreview();
+    } else if (param === 'unfakeSnapGrid') {
+      unfakeSnapGrid.checked = DEFAULTS.unfakeSnapGrid;
+    } else if (param === 'unfakeElasticGrid') {
+      unfakeElasticGrid.checked = DEFAULTS.unfakeElasticGrid;
+    } else if (param === 'unfakeDownscaleMethod') {
+      unfakeDownscaleMethod.value = DEFAULTS.unfakeDownscaleMethod;
+    } else if (param === 'unfakeMorph') {
+      unfakeMorph.checked = DEFAULTS.unfakeMorph;
+    } else if (param === 'unfakeJaggy') {
+      unfakeJaggy.checked = DEFAULTS.unfakeJaggy;
+    } else if (param === 'unfakeAlpha') {
+      unfakeAlphaBinarize.checked = DEFAULTS.unfakeAlphaBinarize;
+      unfakeAlphaThreshold.value = DEFAULTS.unfakeAlphaThreshold;
+      unfakeAlphaThresholdNum.value = DEFAULTS.unfakeAlphaThreshold;
+    } else if (param === 'unfakeAutoColors') {
+      unfakeAutoColors.checked = DEFAULTS.unfakeAutoColors;
+      unfakeMaxColorsRow.style.opacity = '1';
+    } else if (param === 'unfakeMaxColors') {
+      unfakeMaxColors.value = DEFAULTS.unfakeMaxColors;
+      unfakeMaxColorsNum.value = DEFAULTS.unfakeMaxColors;
+    } else if (param === 'unfakePalette') {
+      unfakePaletteSelect.value = DEFAULTS.unfakePalette;
+      paletteSelect.value = DEFAULTS.unfakePalette;
       updatePalettePreview();
     }
 
+    updateDimensionsUI();
     triggerPreviewDebounced();
   });
 });
@@ -357,14 +554,21 @@ function loadPaletteReferenceImage(file) {
       paletteRefNameEl.textContent = paletteRefName;
       paletteRefBadge.style.display = 'flex';
 
-      let refOpt = paletteSelect.querySelector('option[value="reference"]');
-      if (!refOpt) {
-        refOpt = document.createElement('option');
-        refOpt.value = 'reference';
-        paletteSelect.insertBefore(refOpt, paletteSelect.firstChild);
-      }
-      refOpt.textContent = `★ Ref Image: ${paletteRefName} (K-Means)`;
-      paletteSelect.value = 'reference';
+      if (unfakePaletteRefThumb) unfakePaletteRefThumb.src = ev.target.result;
+      if (unfakePaletteRefName) unfakePaletteRefName.textContent = paletteRefName;
+      if (unfakePaletteRefBadge) unfakePaletteRefBadge.style.display = 'flex';
+
+      [paletteSelect, unfakePaletteSelect].forEach(sel => {
+        if (!sel) return;
+        let refOpt = sel.querySelector('option[value="reference"]');
+        if (!refOpt) {
+          refOpt = document.createElement('option');
+          refOpt.value = 'reference';
+          sel.insertBefore(refOpt, sel.firstChild);
+        }
+        refOpt.textContent = `★ Ref Image: ${paletteRefName} (K-Means)`;
+        sel.value = 'reference';
+      });
 
       updatePalettePreview();
       triggerPreviewDebounced();
@@ -375,29 +579,43 @@ function loadPaletteReferenceImage(file) {
 }
 
 // CLEAR REFERENCE PALETTE
-btnClearPaletteRef.addEventListener('click', (e) => {
-  e.stopPropagation();
+function clearPaletteReference() {
   paletteRefPixels = null;
   paletteRefName = "";
   paletteFileInput.value = '';
 
-  paletteRefBadge.style.display = 'none';
+  if (paletteRefBadge) paletteRefBadge.style.display = 'none';
+  if (unfakePaletteRefBadge) unfakePaletteRefBadge.style.display = 'none';
 
-  const refOpt = paletteSelect.querySelector('option[value="reference"]');
-  if (refOpt) refOpt.remove();
+  [paletteSelect, unfakePaletteSelect].forEach(sel => {
+    if (!sel) return;
+    const refOpt = sel.querySelector('option[value="reference"]');
+    if (refOpt) refOpt.remove();
+    sel.value = 'auto';
+  });
 
-  paletteSelect.value = 'auto';
   updatePalettePreview();
   triggerPreviewDebounced();
+}
+
+btnClearPaletteRef.addEventListener('click', (e) => {
+  e.stopPropagation();
+  clearPaletteReference();
 });
+if (btnUnfakeClearPaletteRef) {
+  btnUnfakeClearPaletteRef.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearPaletteReference();
+  });
+}
 
 // PALETTE PREVIEW SWATCHES
 function updatePalettePreview() {
-  const pChoice = paletteSelect.value;
-  palettePreview.innerHTML = '';
+  const pChoice = currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value;
+  [palettePreview, unfakePalettePreview].forEach(p => { if (p) p.innerHTML = ''; });
 
   if (pChoice === 'reference' && paletteRefPixels && paletteRefPixels.length > 0) {
-    const kColors = parseInt(colorCount.value) || 16;
+    const kColors = currentEngine === 'unfake' ? (parseInt(unfakeMaxColors.value) || 32) : (parseInt(colorCount.value) || 16);
     const iters = Math.min(10, parseInt(kmeansIter.value) || 10);
     const extracted = runKMeans(paletteRefPixels, kColors, iters);
     renderSwatches(extracted);
@@ -408,25 +626,39 @@ function updatePalettePreview() {
   if (preset) {
     renderSwatches(preset);
   } else {
-    palettePreview.innerHTML = '<span style="color:#64748b;font-size:0.68rem;padding:2px 4px;">Auto K-Means (Active Image)</span>';
+    const hint = currentEngine === 'unfake' ? 'Auto Quantize (Original Colors)' : 'Auto K-Means (Active Image)';
+    [palettePreview, unfakePalettePreview].forEach(p => {
+      if (p) p.innerHTML = `<span style="color:#64748b;font-size:0.68rem;padding:2px 4px;">${hint}</span>`;
+    });
   }
 }
 
 function renderSwatches(colorList) {
-  palettePreview.innerHTML = '';
+  [palettePreview, unfakePalettePreview].forEach(p => { if (p) p.innerHTML = ''; });
   if (!colorList || colorList.length === 0) return;
-  colorList.forEach(c => {
-    const d = document.createElement('div');
-    d.style.backgroundColor = `rgb(${c[0]},${c[1]},${c[2]})`;
-    d.title = `rgb(${c[0]},${c[1]},${c[2]})`;
-    palettePreview.appendChild(d);
+  [palettePreview, unfakePalettePreview].forEach(p => {
+    if (!p) return;
+    colorList.forEach(c => {
+      const d = document.createElement('div');
+      d.style.backgroundColor = `rgb(${c[0]},${c[1]},${c[2]})`;
+      d.title = `rgb(${c[0]},${c[1]},${c[2]})`;
+      p.appendChild(d);
+    });
   });
 }
 
 paletteSelect.addEventListener('change', () => {
+  if (unfakePaletteSelect) unfakePaletteSelect.value = paletteSelect.value;
   updatePalettePreview();
   triggerPreviewDebounced();
 });
+if (unfakePaletteSelect) {
+  unfakePaletteSelect.addEventListener('change', () => {
+    paletteSelect.value = unfakePaletteSelect.value;
+    updatePalettePreview();
+    triggerPreviewDebounced();
+  });
+}
 updatePalettePreview();
 
 // ZOOM CONTROLS (FIT, NATIVE 1:1, SLIDER & NUM BOX)
@@ -526,16 +758,82 @@ function handleFiles(files) {
 }
 
 function updateBatchList() {
-  const list = document.getElementById('batchList');
-  const count = document.getElementById('batchCount');
-  count.textContent = batchFiles.length;
-  list.innerHTML = '';
-  batchFiles.forEach((f, idx) => {
-    const li = document.createElement('li');
-    li.textContent = `${idx + 1}. ${f.name} (${Math.round(f.size/1024)} KB)`;
-    list.appendChild(li);
+  const lists = [document.getElementById('batchList'), unfakeBatchList];
+  const counts = [document.getElementById('batchCount'), unfakeBatchCount];
+  const buttons = [document.getElementById('btnProcessBatch'), btnUnfakeProcessBatch];
+
+  counts.forEach(c => { if (c) c.textContent = batchFiles.length; });
+  buttons.forEach(b => { if (b) b.disabled = batchFiles.length === 0; });
+
+  lists.forEach(list => {
+    if (!list) return;
+    list.innerHTML = '';
+    if (batchFiles.length === 0) {
+      list.innerHTML = '<li class="empty-hint">Drop multiple images here to batch process.</li>';
+      return;
+    }
+    batchFiles.forEach((f, idx) => {
+      const li = document.createElement('li');
+      li.textContent = `${idx + 1}. ${f.name} (${Math.round(f.size/1024)} KB)`;
+      list.appendChild(li);
+    });
   });
-  document.getElementById('btnProcessBatch').disabled = batchFiles.length === 0;
+}
+
+// INTELLIGENT SCALE DETECTION (UNFAKE.JS ENGINE INTEGRATION)
+async function runScaleDetection() {
+  if (!rawImageElement) return;
+  const w = rawImageElement.naturalWidth || rawImageElement.width;
+  const h = rawImageElement.naturalHeight || rawImageElement.height;
+  const imgData = rawOffCtx.getImageData(0, 0, w, h);
+
+  if (unfakeScaleStatText) {
+    unfakeScaleStatText.textContent = "Analyzing scale...";
+  }
+
+  try {
+    let det = null;
+    const method = currentEngine === 'unfake' ? unfakeDetectMethod.value : 'auto';
+    const manualVal = parseFloat(unfakeManualScale.value) || 8.0;
+
+    if (window.UnfakeEngine && typeof window.UnfakeEngine.detectScale === 'function') {
+      det = await window.UnfakeEngine.detectScale(imgData, {
+        method: method,
+        manualScale: method === 'manual' ? manualVal : null
+      });
+    }
+
+    if (det && det.scale) {
+      detectedScale = det.scale;
+      detectedGrid = det.grid;
+      const scaleDesc = Number.isInteger(detectedScale) ? `${detectedScale}x` : `${detectedScale.toFixed(2)}x`;
+      const methodDesc = (det.method || 'auto').replace('auto_', '').toUpperCase();
+      if (unfakeScaleStatText) {
+        unfakeScaleStatText.textContent = `${scaleDesc} [${methodDesc}]`;
+      }
+    } else {
+      detectedScale = 1;
+      detectedGrid = null;
+      if (unfakeScaleStatText) {
+        unfakeScaleStatText.textContent = "1x (No grid found)";
+      }
+    }
+  } catch (err) {
+    console.warn("Scale detection failed:", err);
+    detectedScale = 1;
+    if (unfakeScaleStatText) {
+      unfakeScaleStatText.textContent = "1x (Fallback)";
+    }
+  }
+
+  // Update WASM Badge status
+  if (unfakeWasmBadge && window.UnfakeEngine) {
+    const isWasm = window.UnfakeEngine.isWasmActive();
+    unfakeWasmBadge.textContent = isWasm ? 'RUST WASM' : 'PURE JS';
+    unfakeWasmBadge.style.color = isWasm ? 'var(--accent-green)' : 'var(--accent-yellow)';
+  }
+
+  updateDimensionsUI();
 }
 
 // LOAD IMAGE INTO WORKBENCH
@@ -544,7 +842,7 @@ function loadImage(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       rawImageElement = img;
       const w = img.naturalWidth || img.width;
       const h = img.naturalHeight || img.height;
@@ -562,8 +860,11 @@ function loadImage(file) {
       viewerToolbar.style.display = 'flex';
       canvasWrapper.style.display = 'flex';
 
-      selectDivisor(currentDivisor || 1);
-
+      // Always perform intelligent scale detection if in AUTO downscale mode
+      if (currentDivisor === 'auto') {
+        await runScaleDetection();
+      }
+      selectDivisor(currentDivisor || 'auto');
       updateDimensionsUI();
 
       setTimeout(() => {
@@ -590,17 +891,25 @@ function updateDimensionsUI() {
   if (!rawImageElement) return;
   const w = rawImageElement.naturalWidth || rawImageElement.width;
   const h = rawImageElement.naturalHeight || rawImageElement.height;
-  const targetW = Math.max(1, Math.round(w / currentDivisor));
-  const targetH = Math.max(1, Math.round(h / currentDivisor));
+  const effDiv = getEffectiveDivisor();
+  const targetW = Math.max(1, Math.round(w / effDiv));
+  const targetH = Math.max(1, Math.round(h / effDiv));
+
+  const scaleStr = Number.isInteger(effDiv) ? `${effDiv}x` : `${effDiv.toFixed(2)}x`;
+  const divLabel = currentDivisor === 'auto' ? `Auto (/${scaleStr})` : `/${effDiv}`;
 
   origRes.textContent = `${w}x${h}`;
-  targetDimText.textContent = `${targetW}x${targetH} px (/${currentDivisor})`;
+  if (targetDimText) targetDimText.textContent = `${targetW}x${targetH} px (${divLabel})`;
+  if (unfakeTargetDimText) unfakeTargetDimText.textContent = `${targetW}x${targetH} px (${divLabel})`;
   snappedRes.textContent = `${targetW}x${targetH}`;
 
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
-  const downloadName = `${baseName}_sn${targetW}.png`;
+  const suffix = currentEngine === 'unfake' ? `_unfake${targetW}` : `_sn${targetW}`;
+  const downloadName = `${baseName}${suffix}.png`;
   downloadNameLabel.textContent = `(${downloadName})`;
+  if (unfakeDownloadNameLabel) unfakeDownloadNameLabel.textContent = `(${downloadName})`;
   btnDownload.disabled = false;
+  if (btnUnfakeDownload) btnUnfakeDownload.disabled = false;
 }
 
 // CLOSE / EJECT IMAGE
@@ -618,8 +927,11 @@ btnCloseImage.addEventListener('click', () => {
   snappedRes.textContent = '-';
   activeColors.textContent = '-';
   targetDimText.textContent = 'Waiting...';
+  if (unfakeTargetDimText) unfakeTargetDimText.textContent = 'Waiting...';
   downloadNameLabel.textContent = '';
+  if (unfakeDownloadNameLabel) unfakeDownloadNameLabel.textContent = '';
   btnDownload.disabled = true;
+  if (btnUnfakeDownload) btnUnfakeDownload.disabled = true;
 
   fileInput.value = '';
 });
@@ -652,9 +964,59 @@ async function updatePreviewAsync() {
   try {
     const w = rawImageElement.naturalWidth || rawImageElement.width;
     const h = rawImageElement.naturalHeight || rawImageElement.height;
-    const targetW = Math.max(1, Math.round(w / currentDivisor));
-    const targetH = Math.max(1, Math.round(h / currentDivisor));
-    
+    const effDiv = getEffectiveDivisor();
+    const targetW = Math.max(1, Math.round(w / effDiv));
+    const targetH = Math.max(1, Math.round(h / effDiv));
+
+    // ============================================
+    // BRANCH A: UNFAKE.JS ENGINE
+    // ============================================
+    if (currentEngine === 'unfake') {
+      const isWasm = window.UnfakeEngine ? window.UnfakeEngine.isWasmActive() : false;
+      pipelineTag.textContent = isWasm ? "Unfake.js (WASM)" : "Unfake.js (JS)";
+
+      const pChoice = unfakePaletteSelect.value;
+      let activePalette = null;
+      if (pChoice === 'reference' && paletteRefPixels && paletteRefPixels.length > 0) {
+        const kColors = parseInt(unfakeMaxColors.value) || 32;
+        activePalette = runKMeans(paletteRefPixels, kColors, 15);
+      } else if (PALETTES[pChoice]) {
+        activePalette = PALETTES[pChoice];
+      }
+
+      if (window.UnfakeEngine && typeof window.UnfakeEngine.process === 'function') {
+        const res = await window.UnfakeEngine.process(rawOffCanvas, {
+          scale: effDiv,
+          manualScale: unfakeDetectMethod.value === 'manual' ? parseFloat(unfakeManualScale.value) : null,
+          detectMethod: unfakeDetectMethod.value,
+          edgeDetectMethod: 'tiled',
+          snapGrid: unfakeSnapGrid.checked,
+          elasticGrid: unfakeElasticGrid.checked,
+          downscaleMethod: unfakeDownscaleMethod.value,
+          domMeanThreshold: parseFloat(unfakeDomThreshold.value) || 0.15,
+          cleanup: {
+            morph: unfakeMorph.checked,
+            jaggy: unfakeJaggy.checked
+          },
+          alphaThreshold: unfakeAlphaBinarize.checked ? (parseInt(unfakeAlphaThreshold.value) || 128) : null,
+          maxColors: unfakeAutoColors.checked ? 32 : (parseInt(unfakeMaxColors.value) || 32),
+          autoColorCount: unfakeAutoColors.checked,
+          fixedPalette: activePalette
+        });
+
+        if (currentSession !== previewSessionId) return;
+
+        currentSnappedCanvas = res.canvas;
+        currentActivePalette = activePalette || (res.palette ? res.palette.map(p => typeof p === 'string' ? hexToRgb(p) : p) : null);
+        activeColors.textContent = res.colorsUsed || (currentActivePalette ? currentActivePalette.length : 'All');
+        renderSplitView();
+        return;
+      }
+    }
+
+    // ============================================
+    // BRANCH B: PIXEL SNAPPER ENGINE (DEFAULT)
+    // ============================================
     const kColors = parseInt(colorCount.value) || 16;
     const iterations = parseInt(kmeansIter.value) || 15;
     const oWeight = parseFloat(outlineWeight.value) || 1.5;
@@ -1426,19 +1788,20 @@ async function encodeIndexedPng(width, height, rgbaData, isHardAlpha, customPale
   return png;
 }
 
-// DOWNLOAD ASSET: [filename]_sn[sizeX].png (INDEXED PNG WITH PLTE & tRNS)
-btnDownload.addEventListener('click', async () => {
+// DOWNLOAD ASSET: [filename]_sn[sizeX].png or [filename]_unfake[sizeX].png (INDEXED PNG WITH PLTE & tRNS)
+async function downloadAsset() {
   if (!currentSnappedCanvas || !rawImageElement) return;
 
   const targetW = currentSnappedCanvas.width;
   const targetH = currentSnappedCanvas.height;
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
-  const finalFilename = `${baseName}_sn${targetW}.png`;
+  const suffix = currentEngine === 'unfake' ? `_unfake${targetW}` : `_sn${targetW}`;
+  const finalFilename = `${baseName}${suffix}.png`;
 
   try {
     const offCtx = currentSnappedCanvas.getContext('2d');
     const imgData = offCtx.getImageData(0, 0, targetW, targetH);
-    const isHardAlpha = snapAlpha.checked;
+    const isHardAlpha = currentEngine === 'unfake' ? unfakeAlphaBinarize.checked : snapAlpha.checked;
 
     const pngBytes = await encodeIndexedPng(
       targetW,
@@ -1462,7 +1825,55 @@ btnDownload.addEventListener('click', async () => {
     link.href = currentSnappedCanvas.toDataURL('image/png');
     link.click();
   }
-});
+}
+
+btnDownload.addEventListener('click', downloadAsset);
+if (btnUnfakeDownload) {
+  btnUnfakeDownload.addEventListener('click', downloadAsset);
+}
+
+// BATCH PROCESSING
+async function processBatch() {
+  if (batchFiles.length === 0) return;
+
+  const buttons = [document.getElementById('btnProcessBatch'), btnUnfakeProcessBatch];
+  buttons.forEach(b => { if (b) { b.disabled = true; b.textContent = "Processing Batch..."; } });
+
+  for (let i = 0; i < batchFiles.length; i++) {
+    const file = batchFiles[i];
+    await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const img = new Image();
+        img.onload = async () => {
+          rawImageElement = img;
+          loadedFilename = file.name;
+          const w = img.naturalWidth || img.width;
+          const h = img.naturalHeight || img.height;
+          rawOffCanvas.width = w;
+          rawOffCanvas.height = h;
+          rawOffCtx.clearRect(0, 0, w, h);
+          rawOffCtx.drawImage(img, 0, 0);
+
+          if (currentDivisor === 'auto') {
+            await runScaleDetection();
+          }
+          await updatePreviewAsync();
+          await downloadAsset();
+          resolve();
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  buttons.forEach(b => { if (b) { b.disabled = false; b.textContent = "BATCH PROCESS ALL"; } });
+}
+
+const batchBtn = document.getElementById('btnProcessBatch');
+if (batchBtn) batchBtn.addEventListener('click', processBatch);
+if (btnUnfakeProcessBatch) btnUnfakeProcessBatch.addEventListener('click', processBatch);
 
 // TAB 2: PROMPT LAB COPY HELPERS
 const globalArtstyleText = document.getElementById('globalArtstyleText');
