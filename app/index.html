@@ -306,6 +306,47 @@
                   EDIT ACTIVE PALETTE
                 </button>
 
+                <!-- SMART OUTLINE HEALER (MULTI-COLOR & ANTI-CLUMP) -->
+                <div class="line-healer-box" style="margin-top:6px; padding:4px 6px; background:#080d14; border:1px solid #1a2838; border-radius:2px;">
+                  <div class="checkbox-row">
+                    <label style="font-size:0.7rem; font-weight:bold; color:var(--text-main);" title="Heals broken lines & outlines using high-res verification, multi-color matching, and anti-clump / no-doubles guard">
+                      <input type="checkbox" id="smartLineHealerToggle" autocomplete="off"> SMART OUTLINE HEALER
+                    </label>
+                    <button type="button" class="btn-reset-param" data-param="smartLineHealer" title="Reset Smart Outline Healer to Off">&#8634;</button>
+                  </div>
+                  <div class="line-healer-sub" id="lineHealerOptions" style="display:none; margin-top:4px; padding-top:4px; border-top:1px solid #14202e;">
+                    <div class="label-row" style="font-size:0.68rem; margin-top:2px; margin-bottom:2px;">
+                      <label for="lineHealerSensitivity" title="Ridge sensitivity: higher = more forgiving (catches faint, thin or lower-contrast lines), lower = strict (only bold, dark outlines)">FORGIVING (SENS.):</label>
+                      <div class="stepper-group">
+                        <button type="button" class="btn-step" data-target="lineHealerSensitivityNum" data-step="-5">-</button>
+                        <input type="number" id="lineHealerSensitivityNum" min="10" max="90" step="5" value="50" class="num-box" style="width:34px;">
+                        <button type="button" class="btn-step" data-target="lineHealerSensitivityNum" data-step="5">+</button>
+                      </div>
+                    </div>
+                    <input type="range" id="lineHealerSensitivity" min="10" max="90" step="5" value="50" style="margin-bottom:4px;">
+
+                    <div class="label-row" style="font-size:0.68rem; margin-bottom:4px;">
+                      <label for="lineHealerMode">MODE:</label>
+                      <select id="lineHealerMode" class="select-box" style="font-size:0.65rem; padding:1px 3px; max-width:130px;">
+                        <option value="gaps" selected>Gaps Only (Connect)</option>
+                        <option value="all">Full Skeleton (Detail)</option>
+                      </select>
+                    </div>
+
+                    <div class="label-row" style="font-size:0.68rem; margin-bottom:2px;">
+                      <label for="lineHealerMaxGap">MAX GAP:</label>
+                      <div class="stepper-group">
+                        <button type="button" class="btn-step" data-target="lineHealerMaxGap" data-step="-1">-</button>
+                        <input type="number" id="lineHealerMaxGap" min="1" max="2" step="1" value="1" class="num-box" style="width:34px;" title="Max gap to bridge (1 or 2 pixels)">
+                        <button type="button" class="btn-step" data-target="lineHealerMaxGap" data-step="1">+</button>
+                      </div>
+                    </div>
+                    <div style="font-size:0.64rem; color:var(--text-dim); margin-top:2px;">
+                      High-Res Ridge &bull; Anti-clump &bull; Palette-matched
+                    </div>
+                  </div>
+                </div>
+
                 <!-- ACTIVE REFERENCE PALETTE BADGE -->
                 <div class="palette-ref-badge" id="paletteRefBadge" style="display:none;">
                   <img id="paletteRefThumb" class="palette-ref-thumb" alt="Thumb">
@@ -556,6 +597,47 @@
                 <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnUnfakeStartEyedropper" title="Edit current active palette colors or sample new ones with eyedropper">
                   EDIT ACTIVE PALETTE
                 </button>
+
+                <!-- SMART OUTLINE HEALER (UNFAKE SYNCED) -->
+                <div class="line-healer-box" style="margin-top:6px; padding:4px 6px; background:#080d14; border:1px solid #1a2838; border-radius:2px;">
+                  <div class="checkbox-row">
+                    <label style="font-size:0.7rem; font-weight:bold; color:var(--text-main);" title="Heals broken lines & outlines using high-res verification, multi-color matching, and anti-clump / no-doubles guard">
+                      <input type="checkbox" id="unfakeSmartLineHealerToggle" autocomplete="off"> SMART OUTLINE HEALER
+                    </label>
+                    <button type="button" class="btn-reset-param" data-param="unfakeSmartLineHealer" title="Reset Smart Outline Healer to Off">&#8634;</button>
+                  </div>
+                  <div class="line-healer-sub" id="unfakeLineHealerOptions" style="display:none; margin-top:4px; padding-top:4px; border-top:1px solid #14202e;">
+                    <div class="label-row" style="font-size:0.68rem; margin-top:2px; margin-bottom:2px;">
+                      <label for="unfakeLineHealerSensitivity" title="Ridge sensitivity: higher = more forgiving (catches faint, thin or lower-contrast lines), lower = strict (only bold, dark outlines)">FORGIVING (SENS.):</label>
+                      <div class="stepper-group">
+                        <button type="button" class="btn-step" data-target="unfakeLineHealerSensitivityNum" data-step="-5">-</button>
+                        <input type="number" id="unfakeLineHealerSensitivityNum" min="10" max="90" step="5" value="50" class="num-box" style="width:34px;">
+                        <button type="button" class="btn-step" data-target="unfakeLineHealerSensitivityNum" data-step="5">+</button>
+                      </div>
+                    </div>
+                    <input type="range" id="unfakeLineHealerSensitivity" min="10" max="90" step="5" value="50" style="margin-bottom:4px;">
+
+                    <div class="label-row" style="font-size:0.68rem; margin-bottom:4px;">
+                      <label for="unfakeLineHealerMode">MODE:</label>
+                      <select id="unfakeLineHealerMode" class="select-box" style="font-size:0.65rem; padding:1px 3px; max-width:130px;">
+                        <option value="gaps" selected>Gaps Only (Connect)</option>
+                        <option value="all">Full Skeleton (Detail)</option>
+                      </select>
+                    </div>
+
+                    <div class="label-row" style="font-size:0.68rem; margin-bottom:2px;">
+                      <label for="unfakeLineHealerMaxGap">MAX GAP:</label>
+                      <div class="stepper-group">
+                        <button type="button" class="btn-step" data-target="unfakeLineHealerMaxGap" data-step="-1">-</button>
+                        <input type="number" id="unfakeLineHealerMaxGap" min="1" max="2" step="1" value="1" class="num-box" style="width:34px;" title="Max gap to bridge (1 or 2 pixels)">
+                        <button type="button" class="btn-step" data-target="unfakeLineHealerMaxGap" data-step="1">+</button>
+                      </div>
+                    </div>
+                    <div style="font-size:0.64rem; color:var(--text-dim); margin-top:2px;">
+                      High-Res Ridge &bull; Anti-clump &bull; Palette-matched
+                    </div>
+                  </div>
+                </div>
 
                 <!-- ACTIVE REFERENCE PALETTE BADGE -->
                 <div class="palette-ref-badge" id="unfakePaletteRefBadge" style="display:none;">

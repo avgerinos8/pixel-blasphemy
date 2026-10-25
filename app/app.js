@@ -52,6 +52,10 @@ const DEFAULTS = {
   palette: 'auto',
   zoom: 100,
   grid: false,
+  smartLineHealer: false,
+  lineHealerSensitivity: 50,
+  lineHealerMode: 'gaps',
+  lineHealerMaxGap: 1,
 
   // Unfake.js Defaults
   unfakeDetectMethod: 'auto',
@@ -66,7 +70,11 @@ const DEFAULTS = {
   unfakeAlphaThreshold: 128,
   unfakeAutoColors: false,
   unfakeMaxColors: 32,
-  unfakePalette: 'auto'
+  unfakePalette: 'auto',
+  unfakeSmartLineHealer: false,
+  unfakeLineHealerSensitivity: 50,
+  unfakeLineHealerMode: 'gaps',
+  unfakeLineHealerMaxGap: 1
 };
 
 // Global State
@@ -220,6 +228,14 @@ const paletteRefThumb = document.getElementById('paletteRefThumb');
 const paletteRefNameEl = document.getElementById('paletteRefName');
 const btnClearPaletteRef = document.getElementById('btnClearPaletteRef');
 
+// Smart Outline Healer DOM (Pixel Snapper)
+const smartLineHealerToggle = document.getElementById('smartLineHealerToggle');
+const lineHealerOptions = document.getElementById('lineHealerOptions');
+const lineHealerSensitivity = document.getElementById('lineHealerSensitivity');
+const lineHealerSensitivityNum = document.getElementById('lineHealerSensitivityNum');
+const lineHealerMode = document.getElementById('lineHealerMode');
+const lineHealerMaxGap = document.getElementById('lineHealerMaxGap');
+
 // Eyedropper HUD & Live Preview
 const eyedropperHud = document.getElementById('eyedropperHud');
 const eyedropperHint = document.getElementById('eyedropperHint');
@@ -323,6 +339,15 @@ const unfakePaletteRefThumb = document.getElementById('unfakePaletteRefThumb');
 const unfakePaletteRefName = document.getElementById('unfakePaletteRefName');
 const btnUnfakeClearPaletteRef = document.getElementById('btnUnfakeClearPaletteRef');
 const unfakePalettePreview = document.getElementById('unfakePalettePreview');
+
+// Smart Outline Healer DOM (Unfake.js)
+const unfakeSmartLineHealerToggle = document.getElementById('unfakeSmartLineHealerToggle');
+const unfakeLineHealerOptions = document.getElementById('unfakeLineHealerOptions');
+const unfakeLineHealerSensitivity = document.getElementById('unfakeLineHealerSensitivity');
+const unfakeLineHealerSensitivityNum = document.getElementById('unfakeLineHealerSensitivityNum');
+const unfakeLineHealerMode = document.getElementById('unfakeLineHealerMode');
+const unfakeLineHealerMaxGap = document.getElementById('unfakeLineHealerMaxGap');
+
 const unfakeBatchDrawer = document.getElementById('unfakeBatchDrawer');
 const unfakeBatchCount = document.getElementById('unfakeBatchCount');
 const unfakeBatchList = document.getElementById('unfakeBatchList');
@@ -632,6 +657,69 @@ autoOutlineToggle.addEventListener('change', () => triggerPreviewDebounced());
 autoOutlineColor.addEventListener('input', () => triggerPreviewDebounced());
 snapAlpha.addEventListener('change', () => triggerPreviewDebounced());
 pass2Toggle.addEventListener('change', () => triggerPreviewDebounced());
+
+// SMART OUTLINE HEALER TOGGLES & SYNC (OFF BY DEFAULT)
+if (smartLineHealerToggle) smartLineHealerToggle.checked = false;
+if (unfakeSmartLineHealerToggle) unfakeSmartLineHealerToggle.checked = false;
+if (lineHealerOptions) lineHealerOptions.style.display = 'none';
+if (unfakeLineHealerOptions) unfakeLineHealerOptions.style.display = 'none';
+
+if (smartLineHealerToggle) {
+  smartLineHealerToggle.addEventListener('change', () => {
+    const isChecked = smartLineHealerToggle.checked;
+    if (lineHealerOptions) lineHealerOptions.style.display = isChecked ? 'block' : 'none';
+    if (unfakeSmartLineHealerToggle) {
+      unfakeSmartLineHealerToggle.checked = isChecked;
+      if (unfakeLineHealerOptions) unfakeLineHealerOptions.style.display = isChecked ? 'block' : 'none';
+    }
+    triggerPreviewDebounced();
+  });
+}
+if (unfakeSmartLineHealerToggle) {
+  unfakeSmartLineHealerToggle.addEventListener('change', () => {
+    const isChecked = unfakeSmartLineHealerToggle.checked;
+    if (unfakeLineHealerOptions) unfakeLineHealerOptions.style.display = isChecked ? 'block' : 'none';
+    if (smartLineHealerToggle) {
+      smartLineHealerToggle.checked = isChecked;
+      if (lineHealerOptions) lineHealerOptions.style.display = isChecked ? 'block' : 'none';
+    }
+    triggerPreviewDebounced();
+  });
+}
+syncSliderAndNum(lineHealerSensitivity, lineHealerSensitivityNum, (val) => {
+  if (unfakeLineHealerSensitivity) unfakeLineHealerSensitivity.value = val;
+  if (unfakeLineHealerSensitivityNum) unfakeLineHealerSensitivityNum.value = val;
+  triggerPreviewDebounced();
+});
+syncSliderAndNum(unfakeLineHealerSensitivity, unfakeLineHealerSensitivityNum, (val) => {
+  if (lineHealerSensitivity) lineHealerSensitivity.value = val;
+  if (lineHealerSensitivityNum) lineHealerSensitivityNum.value = val;
+  triggerPreviewDebounced();
+});
+if (lineHealerMode) {
+  lineHealerMode.addEventListener('change', () => {
+    if (unfakeLineHealerMode) unfakeLineHealerMode.value = lineHealerMode.value;
+    triggerPreviewDebounced();
+  });
+}
+if (unfakeLineHealerMode) {
+  unfakeLineHealerMode.addEventListener('change', () => {
+    if (lineHealerMode) lineHealerMode.value = unfakeLineHealerMode.value;
+    triggerPreviewDebounced();
+  });
+}
+if (lineHealerMaxGap) {
+  lineHealerMaxGap.addEventListener('input', () => {
+    if (unfakeLineHealerMaxGap) unfakeLineHealerMaxGap.value = lineHealerMaxGap.value;
+    triggerPreviewDebounced();
+  });
+}
+if (unfakeLineHealerMaxGap) {
+  unfakeLineHealerMaxGap.addEventListener('input', () => {
+    if (lineHealerMaxGap) lineHealerMaxGap.value = unfakeLineHealerMaxGap.value;
+    triggerPreviewDebounced();
+  });
+}
 
 // ENGINE SWITCHER HANDLER
 function setEngine(engine) {
@@ -1024,6 +1112,19 @@ btnResetAll.addEventListener('click', () => {
   unfakeMaxColorsNum.value = DEFAULTS.unfakeMaxColors;
   unfakePaletteSelect.value = DEFAULTS.unfakePalette;
 
+  if (smartLineHealerToggle) smartLineHealerToggle.checked = DEFAULTS.smartLineHealer;
+  if (lineHealerOptions) lineHealerOptions.style.display = 'none';
+  if (lineHealerSensitivity) lineHealerSensitivity.value = DEFAULTS.lineHealerSensitivity;
+  if (lineHealerSensitivityNum) lineHealerSensitivityNum.value = DEFAULTS.lineHealerSensitivity;
+  if (lineHealerMode) lineHealerMode.value = DEFAULTS.lineHealerMode;
+  if (lineHealerMaxGap) lineHealerMaxGap.value = DEFAULTS.lineHealerMaxGap;
+  if (unfakeSmartLineHealerToggle) unfakeSmartLineHealerToggle.checked = DEFAULTS.unfakeSmartLineHealer;
+  if (unfakeLineHealerOptions) unfakeLineHealerOptions.style.display = 'none';
+  if (unfakeLineHealerSensitivity) unfakeLineHealerSensitivity.value = DEFAULTS.unfakeLineHealerSensitivity;
+  if (unfakeLineHealerSensitivityNum) unfakeLineHealerSensitivityNum.value = DEFAULTS.unfakeLineHealerSensitivity;
+  if (unfakeLineHealerMode) unfakeLineHealerMode.value = DEFAULTS.unfakeLineHealerMode;
+  if (unfakeLineHealerMaxGap) unfakeLineHealerMaxGap.value = DEFAULTS.unfakeLineHealerMaxGap;
+
   showGrid = DEFAULTS.grid;
   if (gridAbortTimer) {
     clearTimeout(gridAbortTimer);
@@ -1100,6 +1201,20 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
       unfakePaletteSelect.value = DEFAULTS.unfakePalette;
       paletteSelect.value = DEFAULTS.unfakePalette;
       updatePalettePreview();
+      triggerPreviewDebounced();
+    } else if (param === 'smartLineHealer' || param === 'unfakeSmartLineHealer') {
+      if (smartLineHealerToggle) smartLineHealerToggle.checked = DEFAULTS.smartLineHealer;
+      if (lineHealerOptions) lineHealerOptions.style.display = 'none';
+      if (lineHealerSensitivity) lineHealerSensitivity.value = DEFAULTS.lineHealerSensitivity;
+      if (lineHealerSensitivityNum) lineHealerSensitivityNum.value = DEFAULTS.lineHealerSensitivity;
+      if (lineHealerMode) lineHealerMode.value = DEFAULTS.lineHealerMode;
+      if (lineHealerMaxGap) lineHealerMaxGap.value = DEFAULTS.lineHealerMaxGap;
+      if (unfakeSmartLineHealerToggle) unfakeSmartLineHealerToggle.checked = DEFAULTS.unfakeSmartLineHealer;
+      if (unfakeLineHealerOptions) unfakeLineHealerOptions.style.display = 'none';
+      if (unfakeLineHealerSensitivity) unfakeLineHealerSensitivity.value = DEFAULTS.unfakeLineHealerSensitivity;
+      if (unfakeLineHealerSensitivityNum) unfakeLineHealerSensitivityNum.value = DEFAULTS.unfakeLineHealerSensitivity;
+      if (unfakeLineHealerMode) unfakeLineHealerMode.value = DEFAULTS.unfakeLineHealerMode;
+      if (unfakeLineHealerMaxGap) unfakeLineHealerMaxGap.value = DEFAULTS.unfakeLineHealerMaxGap;
       triggerPreviewDebounced();
     }
 
@@ -2018,6 +2133,18 @@ async function updatePreviewAsync() {
           pickedEyedropperColors = currentActivePalette.map(c => [...c]);
           updateEyedropperUI();
         }
+
+        // SMART OUTLINE HEALER (UNFAKE BRANCH)
+        if (unfakeSmartLineHealerToggle && unfakeSmartLineHealerToggle.checked) {
+          pipelineTag.textContent += "+Healer";
+          const maxGap = parseInt(unfakeLineHealerMaxGap.value) || 1;
+          const sensitivity = parseInt(unfakeLineHealerSensitivity.value) || 50;
+          const mode = unfakeLineHealerMode ? unfakeLineHealerMode.value : 'gaps';
+          healBrokenOutlines(currentSnappedCanvas, adjustedOffCanvas, currentActivePalette, {
+            sensitivity, mode, maxGap
+          });
+        }
+
         renderSplitView();
         return;
       }
@@ -2176,6 +2303,19 @@ async function updatePreviewAsync() {
     // STEP 4: HARD ALPHA CLAMP
     if (snapAlphaChecked) {
       clampAlpha(offCtx, targetW, targetH);
+    }
+
+    if (currentSession !== previewSessionId) return;
+
+    // STEP 5: OPTIONAL SMART OUTLINE HEALER (HIGH-RES RIDGE / SKELETON TRACING)
+    if (smartLineHealerToggle && smartLineHealerToggle.checked) {
+      pipelineTag.textContent += "+Healer";
+      const maxGap = parseInt(lineHealerMaxGap.value) || 1;
+      const sensitivity = parseInt(lineHealerSensitivity.value) || 50;
+      const mode = lineHealerMode ? lineHealerMode.value : 'gaps';
+      healBrokenOutlines(offCanvas, adjustedOffCanvas, palette, {
+        sensitivity, mode, maxGap
+      });
     }
 
     if (currentSession !== previewSessionId) return;
@@ -2340,6 +2480,293 @@ function colorDistSq(c1, c2) {
   const dg = c1[1] - c2[1];
   const db = c1[2] - c2[2];
   return dr * dr + dg * dg + db * db;
+}
+
+// =============================================================================
+// HIGH-RES RIDGE / SKELETON TRACING HEALER (MULTI-COLOR, ANTI-CLUMP & FORGIVING)
+// =============================================================================
+function healBrokenOutlines(lowCanvas, highCanvas, palette, options = {}) {
+  if (!lowCanvas) return;
+  const ctx = lowCanvas.getContext('2d');
+  const w = lowCanvas.width;
+  const h = lowCanvas.height;
+  if (w <= 2 || h <= 2) return;
+
+  // High-res canvas is required for true ridge/skeleton verification
+  if (!highCanvas || highCanvas.width <= 0 || highCanvas.height <= 0) return;
+
+  const sensitivity = options.sensitivity !== undefined ? options.sensitivity : 50;
+  const mode = options.mode || 'gaps'; // 'gaps' | 'all'
+  const maxGap = options.maxGap || 1; // 1 | 2
+
+  let highData = null;
+  const hw = highCanvas.width;
+  const hh = highCanvas.height;
+  try {
+    const hCtx = highCanvas.getContext('2d', { willReadFrequently: true });
+    highData = hCtx.getImageData(0, 0, hw, hh).data;
+  } catch (e) {
+    return;
+  }
+  if (!highData) return;
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+
+  const scaleX = hw / w;
+  const scaleY = hh / h;
+
+  const getHighRGB = (u, v) => {
+    u = Math.max(0, Math.min(hw - 1, u));
+    v = Math.max(0, Math.min(hh - 1, v));
+    const idx = (v * hw + u) * 4;
+    return [highData[idx], highData[idx + 1], highData[idx + 2], highData[idx + 3]];
+  };
+
+  const getLum = (rgb) => 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+
+  // Probe radii for multi-thickness line detection in high-res
+  const probeRadii = [1, 2];
+  const maxProbe = Math.max(2, Math.min(4, Math.round(scaleX / 2)));
+  if (!probeRadii.includes(maxProbe)) probeRadii.push(maxProbe);
+
+  // Step 1: Scan High-Res Ridges per Low-Res Grid Cell
+  const cellMaxRidge = new Float32Array(w * h);
+  const cellRidgeColor = Array.from({ length: w * h }, () => [0, 0, 0]);
+
+  for (let ly = 0; ly < h; ly++) {
+    for (let lx = 0; lx < w; lx++) {
+      const u0 = Math.floor(lx * scaleX);
+      const u1 = Math.min(hw, Math.floor((lx + 1) * scaleX));
+      const v0 = Math.floor(ly * scaleY);
+      const v1 = Math.min(hh, Math.floor((ly + 1) * scaleY));
+
+      let maxR = 0;
+      let bestColor = [0, 0, 0];
+
+      for (let v = v0; v < v1; v++) {
+        for (let u = u0; u < u1; u++) {
+          const c = getHighRGB(u, v);
+          if (c[3] <= 64) continue;
+          const lum = getLum(c);
+
+          // Check if pixel is a silhouette boundary (adjacent to high-res transparency)
+          let isSilhouette = false;
+          const neighbors = [[u - 1, v], [u + 1, v], [u, v - 1], [u, v + 1]];
+          for (let i = 0; i < 4; i++) {
+            const nu = neighbors[i][0];
+            const nv = neighbors[i][1];
+            if (nu >= 0 && nu < hw && nv >= 0 && nv < hh && highData[(nv * hw + nu) * 4 + 3] <= 64) {
+              isSilhouette = true;
+              break;
+            }
+          }
+
+          let rStrength = 0;
+          if (isSilhouette) {
+            rStrength = 220;
+          } else {
+            // Measure dark ridge valleys across multiple radii
+            const sampleL = (su, sv) => getLum(getHighRGB(su, sv));
+            for (let rIdx = 0; rIdx < probeRadii.length; rIdx++) {
+              const r = probeRadii[rIdx];
+              const vH = Math.min(sampleL(u - r, v), sampleL(u + r, v)) - lum;
+              const vV = Math.min(sampleL(u, v - r), sampleL(u, v + r)) - lum;
+              const vD1 = Math.min(sampleL(u - r, v - r), sampleL(u + r, v + r)) - lum;
+              const vD2 = Math.min(sampleL(u - r, v + r), sampleL(u + r, v - r)) - lum;
+              const curMax = Math.max(0, vH, vV, vD1, vD2);
+              if (curMax > rStrength) rStrength = curMax;
+            }
+          }
+
+          if (rStrength > maxR) {
+            maxR = rStrength;
+            bestColor = [c[0], c[1], c[2]];
+          }
+        }
+      }
+
+      const cellIdx = ly * w + lx;
+      cellMaxRidge[cellIdx] = maxR;
+      cellRidgeColor[cellIdx] = bestColor;
+    }
+  }
+
+  // Step 2: Map Sensitivity (10% - 90%) to Ridge Threshold
+  // 10% -> T = 73 (Strict: only bold, dark lines)
+  // 50% -> T = 45 (Balanced)
+  // 90% -> T = 17 (Forgiving: catches thin, faint, light or colored lines)
+  const threshold = Math.max(10, 80 - (sensitivity * 0.7));
+
+  const getIdx = (x, y) => (y * w + x) * 4;
+  const isLowOpaque = (x, y) => {
+    if (x < 0 || x >= w || y < 0 || y >= h) return false;
+    return data[getIdx(x, y) + 3] > 64;
+  };
+  const getLowRGB = (x, y) => {
+    const idx = getIdx(x, y);
+    return [data[idx], data[idx + 1], data[idx + 2]];
+  };
+
+  // Step 3: Determine which low-res pixels ALREADY contain a line
+  const isLowLine = (x, y) => {
+    if (x < 0 || x >= w || y < 0 || y >= h) return false;
+    if (!isLowOpaque(x, y)) return false;
+    const cIdx = y * w + x;
+    if (cellMaxRidge[cIdx] < threshold * 0.75) return false;
+
+    const c = getLowRGB(x, y);
+    const lum = getLum(c);
+    const neighbors = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+    for (let i = 0; i < 4; i++) {
+      const nx = neighbors[i][0];
+      const ny = neighbors[i][1];
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h && !isLowOpaque(nx, ny)) return true;
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h && isLowOpaque(nx, ny)) {
+        if (getLum(getLowRGB(nx, ny)) - lum >= 20) return true;
+      }
+    }
+    if (colorDistSq(c, cellRidgeColor[cIdx]) < 30 * 30) return true;
+    return false;
+  };
+
+  const lineMap = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (isLowLine(x, y)) lineMap[y * w + x] = 1;
+    }
+  }
+
+  const isLine = (x, y) => {
+    if (x < 0 || x >= w || y < 0 || y >= h) return false;
+    return lineMap[y * w + x] === 1;
+  };
+
+  // Anti-Clumping Guard 1: No 2x2 Clumps
+  const violates2x2 = (x, y) => {
+    if (isLine(x - 1, y - 1) && isLine(x, y - 1) && isLine(x - 1, y)) return true;
+    if (isLine(x, y - 1) && isLine(x + 1, y - 1) && isLine(x + 1, y)) return true;
+    if (isLine(x - 1, y) && isLine(x - 1, y + 1) && isLine(x, y + 1)) return true;
+    if (isLine(x + 1, y) && isLine(x, y + 1) && isLine(x + 1, y + 1)) return true;
+    return false;
+  };
+
+  // Anti-Clumping Guard 2: No Parallel Line Fusion
+  const violatesParallel = (x, y, dir) => {
+    if (dir === 'horizontal') {
+      if (isLine(x, y - 1) || isLine(x, y + 1)) return true;
+    } else if (dir === 'vertical') {
+      if (isLine(x - 1, y) || isLine(x + 1, y)) return true;
+    }
+    return false;
+  };
+
+  // Anti-Clumping Guard 3: No overcrowded orthogonal neighbors (>= 3 lines)
+  const violatesOrthogonalCount = (x, y) => {
+    let count = 0;
+    if (isLine(x + 1, y)) count++;
+    if (isLine(x - 1, y)) count++;
+    if (isLine(x, y + 1)) count++;
+    if (isLine(x, y - 1)) count++;
+    return count >= 3;
+  };
+
+  // Step 4: Gap / Skeleton Healing Execution
+  const passes = maxGap >= 2 ? [1, 2] : [1];
+
+  for (const currentPassGap of passes) {
+    const repairs = [];
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (isLine(x, y)) continue;
+
+        const cellIdx = y * w + x;
+        // MUST have verified high-res ridge
+        if (cellMaxRidge[cellIdx] < threshold) continue;
+
+        let shouldHeal = false;
+
+        if (currentPassGap === 1) {
+          // Horizontal gap: Left (x-1, y) and Right (x+1, y)
+          if (isLine(x - 1, y) && isLine(x + 1, y)) {
+            if (!violates2x2(x, y) && !violatesParallel(x, y, 'horizontal') && !violatesOrthogonalCount(x, y)) {
+              shouldHeal = true;
+            }
+          }
+
+          // Vertical gap: Top (x, y-1) and Bottom (x, y+1)
+          if (!shouldHeal && isLine(x, y - 1) && isLine(x, y + 1)) {
+            if (!violates2x2(x, y) && !violatesParallel(x, y, 'vertical') && !violatesOrthogonalCount(x, y)) {
+              shouldHeal = true;
+            }
+          }
+
+          // Diagonal gap (2-step diagonal chain: (x-1, y-1) to (x+1, y+1))
+          if (!shouldHeal && isLine(x - 1, y - 1) && isLine(x + 1, y + 1)) {
+            if (!violates2x2(x, y) && !violatesOrthogonalCount(x, y)) {
+              shouldHeal = true;
+            }
+          }
+          if (!shouldHeal && isLine(x - 1, y + 1) && isLine(x + 1, y - 1)) {
+            if (!violates2x2(x, y) && !violatesOrthogonalCount(x, y)) {
+              shouldHeal = true;
+            }
+          }
+
+          // Full Skeleton Mode: also heals endpoints that touch an existing line
+          if (!shouldHeal && mode === 'all') {
+            const hasNeighbor = isLine(x - 1, y) || isLine(x + 1, y) || isLine(x, y - 1) || isLine(x, y + 1);
+            if (hasNeighbor && !violates2x2(x, y) && !violatesOrthogonalCount(x, y)) {
+              shouldHeal = true;
+            }
+          }
+        } else if (currentPassGap === 2) {
+          // 2px Horizontal gap
+          if (isLine(x - 1, y) && !isLine(x, y) && !isLine(x + 1, y) && isLine(x + 2, y)) {
+            if (cellMaxRidge[y * w + x + 1] >= threshold &&
+                !violates2x2(x, y) && !violatesParallel(x, y, 'horizontal') &&
+                !violates2x2(x + 1, y) && !violatesParallel(x + 1, y, 'horizontal')) {
+              repairs.push({ x, y, color: cellRidgeColor[cellIdx] });
+              repairs.push({ x: x + 1, y, color: cellRidgeColor[y * w + x + 1] });
+              continue;
+            }
+          }
+          // 2px Vertical gap
+          if (isLine(x, y - 1) && !isLine(x, y) && !isLine(x, y + 1) && isLine(x, y + 2)) {
+            if (cellMaxRidge[(y + 1) * w + x] >= threshold &&
+                !violates2x2(x, y) && !violatesParallel(x, y, 'vertical') &&
+                !violates2x2(x, y + 1) && !violatesParallel(x, y + 1, 'vertical')) {
+              repairs.push({ x, y, color: cellRidgeColor[cellIdx] });
+              repairs.push({ x, y: y + 1, color: cellRidgeColor[(y + 1) * w + x] });
+              continue;
+            }
+          }
+        }
+
+        if (shouldHeal) {
+          repairs.push({ x, y, color: cellRidgeColor[cellIdx] });
+        }
+      }
+    }
+
+    // Apply repairs
+    for (let i = 0; i < repairs.length; i++) {
+      const r = repairs[i];
+      let col = r.color;
+      if (palette && palette.length > 0 && typeof findNearestColor === 'function') {
+        col = findNearestColor(col, palette);
+      }
+      const idx = getIdx(r.x, r.y);
+      data[idx] = col[0];
+      data[idx + 1] = col[1];
+      data[idx + 2] = col[2];
+      data[idx + 3] = 255;
+      lineMap[r.y * w + r.x] = 1;
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
 }
 
 // UPDATE SPLIT BAR (FULL VIEWPORT PANEL HEIGHT & <20px HIDE GUARD)
@@ -4335,6 +4762,10 @@ function collectActiveOptions() {
     palette: paletteSelect.value,
     zoom: zoomPercent,
     grid: showGrid,
+    smartLineHealer: smartLineHealerToggle ? smartLineHealerToggle.checked : false,
+    lineHealerSensitivity: lineHealerSensitivity ? (parseInt(lineHealerSensitivity.value) || 50) : 50,
+    lineHealerMode: lineHealerMode ? lineHealerMode.value : 'gaps',
+    lineHealerMaxGap: lineHealerMaxGap ? (parseInt(lineHealerMaxGap.value) || 1) : 1,
     // Unfake.js Parameters
     unfakeDetectMethod: unfakeDetectMethod ? unfakeDetectMethod.value : 'auto',
     unfakeManualScale: unfakeManualScale ? parseFloat(unfakeManualScale.value) : 8.0,
@@ -4406,6 +4837,30 @@ function applyOptionsProfile(opts) {
   if (opts.palette) {
     paletteSelect.value = opts.palette;
     if (unfakePaletteSelect) unfakePaletteSelect.value = opts.palette;
+  }
+  if (opts.smartLineHealer !== undefined) {
+    if (smartLineHealerToggle) {
+      smartLineHealerToggle.checked = opts.smartLineHealer;
+      if (lineHealerOptions) lineHealerOptions.style.display = opts.smartLineHealer ? 'block' : 'none';
+    }
+    if (unfakeSmartLineHealerToggle) {
+      unfakeSmartLineHealerToggle.checked = opts.smartLineHealer;
+      if (unfakeLineHealerOptions) unfakeLineHealerOptions.style.display = opts.smartLineHealer ? 'block' : 'none';
+    }
+  }
+  if (opts.lineHealerSensitivity !== undefined) {
+    if (lineHealerSensitivity) lineHealerSensitivity.value = opts.lineHealerSensitivity;
+    if (lineHealerSensitivityNum) lineHealerSensitivityNum.value = opts.lineHealerSensitivity;
+    if (unfakeLineHealerSensitivity) unfakeLineHealerSensitivity.value = opts.lineHealerSensitivity;
+    if (unfakeLineHealerSensitivityNum) unfakeLineHealerSensitivityNum.value = opts.lineHealerSensitivity;
+  }
+  if (opts.lineHealerMode !== undefined) {
+    if (lineHealerMode) lineHealerMode.value = opts.lineHealerMode;
+    if (unfakeLineHealerMode) unfakeLineHealerMode.value = opts.lineHealerMode;
+  }
+  if (opts.lineHealerMaxGap !== undefined) {
+    if (lineHealerMaxGap) lineHealerMaxGap.value = opts.lineHealerMaxGap;
+    if (unfakeLineHealerMaxGap) unfakeLineHealerMaxGap.value = opts.lineHealerMaxGap;
   }
 
   // Unfake.js Options
