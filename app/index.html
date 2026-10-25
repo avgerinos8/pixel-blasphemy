@@ -37,23 +37,23 @@
           <!-- TOP PERMANENT ACTION BAR (OPEN MAIN + OPEN PALETTE + MASTER RESET) -->
           <div class="panel-top-bar">
             <button class="btn btn-primary btn-open-main" id="btnOpenMainImage">
-              &#128194; OPEN MAIN IMAGE
+              OPEN MAIN IMAGE
             </button>
             <button class="btn btn-secondary btn-open-palette" id="btnOpenPaletteImage" title="Open Image or GPL Palette to extract / load color palette">
-              &#127912; OPEN IMAGE / GPL PALETTE
+              OPEN IMAGE / GPL PALETTE
             </button>
             <button class="btn btn-danger btn-reset-master" id="btnResetAll" title="Reset all processing options to default settings">
-              &#8634; RESET ALL
+              RESET ALL
             </button>
           </div>
 
           <!-- OPTIONS PROFILES BAR (SAVE & LOAD FULL CONFIG) -->
           <div class="options-profile-bar">
             <button type="button" class="btn-options-action" id="btnSaveOptions" title="Save current settings profile to ./temp/saved/options/">
-              &#128190; SAVE OPTIONS
+              SAVE OPTIONS
             </button>
             <button type="button" class="btn-options-action" id="btnLoadOptions" title="Load settings profile from ./temp/saved/options/">
-              &#128194; LOAD OPTIONS
+              LOAD OPTIONS
             </button>
           </div>
           <input type="file" id="optionsFileInput" accept=".json" style="display:none;">
@@ -303,7 +303,7 @@
                 </select>
 
                 <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnStartEyedropper" title="Edit current active palette colors or sample new ones with eyedropper">
-                  &#9998; EDIT ACTIVE PALETTE
+                  EDIT ACTIVE PALETTE
                 </button>
 
                 <!-- ACTIVE REFERENCE PALETTE BADGE -->
@@ -554,7 +554,7 @@
                 </select>
 
                 <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnUnfakeStartEyedropper" title="Edit current active palette colors or sample new ones with eyedropper">
-                  &#9998; EDIT ACTIVE PALETTE
+                  EDIT ACTIVE PALETTE
                 </button>
 
                 <!-- ACTIVE REFERENCE PALETTE BADGE -->
@@ -595,12 +595,12 @@
 
             <!-- BATCH NAVIGATION BAR (ACTIVE WHEN BATCH HAS MULTIPLE FILES) -->
             <div class="batch-nav-toolbar" id="batchNavToolbar" style="display:none;">
-              <button type="button" class="btn-tool btn-batch-nav" id="btnBatchPrev" title="Previous Image in Batch (Hotkey: [ or Left Arrow)">◀ PREV</button>
+              <button type="button" class="btn-tool btn-batch-nav" id="btnBatchPrev" title="Previous Image in Batch (Hotkey: W, [ or Left Arrow)">PREV</button>
               <div class="batch-nav-selector-wrapper">
                 <span class="batch-nav-badge" id="batchNavBadge">1 / 1</span>
                 <select id="batchSelectDropdown" class="batch-select-dropdown" title="Select image in batch queue"></select>
               </div>
-              <button type="button" class="btn-tool btn-batch-nav" id="btnBatchNext" title="Next Image in Batch (Hotkey: ] or Right Arrow)">NEXT ▶</button>
+              <button type="button" class="btn-tool btn-batch-nav" id="btnBatchNext" title="Next Image in Batch (Hotkey: S, ] or Right Arrow)">NEXT</button>
             </div>
             
             <div class="toolbar-actions">
@@ -613,6 +613,9 @@
                 <button class="btn-tool" id="btnFitZoom" title="Fit Sprite inside Viewer Bounds">&#9635; FIT</button>
                 <button class="btn-tool" id="btnResetZoom" title="Reset to Native 1:1 Sprite Pixel Scale (1/divisor)">1:1 NATIVE</button>
               </div>
+
+              <!-- ADJUSTMENTS TOGGLE BUTTON -->
+              <button class="btn-tool" id="btnToggleAdjustments" title="Toggle Pre-Palette Image Adjustments Panel">ADJUSTMENTS</button>
 
               <!-- GRID TOGGLE BUTTON -->
               <button class="btn-tool" id="btnToggleGrid">&#9638; GRID: OFF</button>
@@ -643,6 +646,119 @@
               <!-- INTERACTIVE SPLIT SLIDER BAR (FULL PANEL HEIGHT) -->
               <div class="split-slider-bar" id="splitBar" style="display:none;"></div>
 
+              <!-- FLOATING PRE-PALETTE ADJUSTMENTS SIDE PANEL -->
+              <div class="adjustments-panel" id="adjustmentsPanel" style="display:none;">
+                <div class="adjustments-header">
+                  <div class="adjustments-header-title">
+                    <span class="adjustments-title">ADJUSTMENTS</span>
+                    <span class="adjustments-badge">PRE-PALETTE</span>
+                  </div>
+                  <div class="adjustments-header-actions">
+                    <button type="button" class="btn-tool-sm" id="btnResetAllAdjustments" title="Reset all adjustments to zero">RESET</button>
+                    <button type="button" class="btn-tool-sm btn-tool-danger" id="btnCloseAdjustments" title="Close adjustments panel">CLOSE</button>
+                  </div>
+                </div>
+
+                <div class="adjustments-body">
+                  <!-- BASIC TONE SLIDERS -->
+                  <div class="adj-section">
+                    <div class="adj-section-title">TONE &amp; COLOR</div>
+
+                    <!-- HUE -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjHue">HUE:</label>
+                        <span class="adj-val" id="adjHueVal">0&deg;</span>
+                      </div>
+                      <input type="range" id="adjHue" min="-180" max="180" value="0" class="adj-slider">
+                    </div>
+
+                    <!-- SATURATION -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjSat">SATURATION:</label>
+                        <span class="adj-val" id="adjSatVal">0%</span>
+                      </div>
+                      <input type="range" id="adjSat" min="-100" max="100" value="0" class="adj-slider">
+                    </div>
+
+                    <!-- LIGHTNESS -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjLight">LIGHTNESS:</label>
+                        <span class="adj-val" id="adjLightVal">0%</span>
+                      </div>
+                      <input type="range" id="adjLight" min="-100" max="100" value="0" class="adj-slider">
+                    </div>
+
+                    <!-- BRIGHTNESS -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjBright">BRIGHTNESS:</label>
+                        <span class="adj-val" id="adjBrightVal">0</span>
+                      </div>
+                      <input type="range" id="adjBright" min="-100" max="100" value="0" class="adj-slider">
+                    </div>
+
+                    <!-- CONTRAST -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjContrast">CONTRAST:</label>
+                        <span class="adj-val" id="adjContrastVal">0</span>
+                      </div>
+                      <input type="range" id="adjContrast" min="-100" max="100" value="0" class="adj-slider">
+                    </div>
+                  </div>
+
+                  <!-- TONE CURVES & LEVELS -->
+                  <div class="adj-section">
+                    <div class="adj-section-header">
+                      <span class="adj-section-title">CURVES &amp; LEVELS</span>
+                      <button type="button" class="btn-tool-sm" id="btnResetCurve" title="Reset curve to linear diagonal">RESET CURVE</button>
+                    </div>
+
+                    <div class="curves-canvas-wrapper">
+                      <canvas id="curvesCanvas" width="256" height="140" class="curves-canvas" title="Click line to add point • Drag to bend • Right-click to remove"></canvas>
+                      <div class="curves-hint">Click line: add point &bull; Drag: bend &bull; Right-click: delete</div>
+                    </div>
+
+                    <!-- BLACK POINT -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjBlack">BLACK POINT:</label>
+                        <span class="adj-val" id="adjBlackVal">0</span>
+                      </div>
+                      <input type="range" id="adjBlack" min="0" max="250" value="0" class="adj-slider">
+                    </div>
+
+                    <!-- MIDTONE GAMMA -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjGamma">MIDTONE GAMMA:</label>
+                        <span class="adj-val" id="adjGammaVal">1.00</span>
+                      </div>
+                      <input type="range" id="adjGamma" min="0.10" max="3.00" step="0.05" value="1.00" class="adj-slider">
+                    </div>
+
+                    <!-- WHITE POINT -->
+                    <div class="adj-row">
+                      <div class="adj-label-row">
+                        <label for="adjWhite">WHITE POINT:</label>
+                        <span class="adj-val" id="adjWhiteVal">255</span>
+                      </div>
+                      <input type="range" id="adjWhite" min="5" max="255" value="255" class="adj-slider">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 3 ACTION BUTTONS (NO EMOJIS) -->
+                <div class="adjustments-footer">
+                  <button type="button" class="btn btn-secondary w-full adj-btn" id="btnCopyAdjustments">COPY ADJUSTMENTS</button>
+                  <button type="button" class="btn btn-secondary w-full adj-btn" id="btnPasteAdjustments">PASTE ADJUSTMENTS</button>
+                  <button type="button" class="btn btn-primary w-full adj-btn" id="btnApplyAdjustmentsAll">APPLY ADJUSTMENTS TO ALL</button>
+                </div>
+              </div>
+
               <!-- FLOATING EYEDROPPER HUD TOOLBAR -->
               <div class="eyedropper-hud" id="eyedropperHud" style="display:none;">
                 <div class="eyedropper-hud-header">
@@ -663,11 +779,11 @@
                 <div class="palette-save-row">
                   <input type="text" id="savePaletteName" class="palette-name-input" placeholder="Palette Name..." maxlength="30" value="Custom Palette">
                   <button type="button" class="btn btn-save-palette" id="btnSaveCustomPalette" disabled>
-                    💾 SAVE PALETTE
+                    SAVE PALETTE
                   </button>
                 </div>
                 <button type="button" class="btn btn-primary btn-finish-palette w-full" id="btnFinishPalette">
-                  &#10004; FINISH PALETTE (0 COLORS)
+                  FINISH PALETTE (0 COLORS)
                 </button>
               </div>
 
@@ -1097,7 +1213,7 @@ pip install -r requirements.txt</code></pre>
       </div>
       <div class="color-picker-footer">
         <button type="button" class="btn btn-tool-sm" id="btnAdvPickerCancel">CANCEL</button>
-        <button type="button" class="btn btn-tool-sm btn-tool-active" id="btnAdvPickerApply">&#10004; APPLY COLOR</button>
+        <button type="button" class="btn btn-tool-sm btn-tool-active" id="btnAdvPickerApply">APPLY COLOR</button>
       </div>
     </div>
   </div>

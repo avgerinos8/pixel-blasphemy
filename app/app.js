@@ -77,6 +77,31 @@ let currentSnappedCanvas = null;
 let currentActivePalette = null;
 let rawOffCanvas = document.createElement('canvas');
 let rawOffCtx = rawOffCanvas.getContext('2d', { willReadFrequently: true });
+let adjustedOffCanvas = document.createElement('canvas');
+let adjustedOffCtx = adjustedOffCanvas.getContext('2d', { willReadFrequently: true });
+
+// Pre-Palette Adjustments State & Batch Memory
+const batchImageAdjustments = new Map();
+let clipboardAdjustments = null;
+let currentAdjustments = createDefaultAdjustments();
+let isAdjustmentsPanelOpen = false;
+let cachedHistogram = new Float32Array(256);
+let draggedCurvePointIdx = -1;
+
+function createDefaultAdjustments() {
+  return {
+    hue: 0,
+    saturation: 0,
+    lightness: 0,
+    brightness: 0,
+    contrast: 0,
+    blackPoint: 0,
+    gamma: 1.0,
+    whitePoint: 255,
+    curvePoints: [{ x: 0, y: 0 }, { x: 255, y: 255 }]
+  };
+}
+
 let currentDivisor = 1; // 1 | 'auto' | 'custom' | 2 | 4 | 8 | 16
 let customScaleMode = 'factor'; // 'factor' | 'size'
 let customFactorVal = 5.0;
@@ -87,6 +112,8 @@ let detectedScale = 1;
 let detectedGrid = null;
 let splitPosition = 0.5;
 let zoomPercent = 100;
+let panOffsetX = 0;
+let panOffsetY = 0;
 let showGrid = false;
 let batchFiles = [];
 let currentBatchIndex = 0;
@@ -321,6 +348,39 @@ const pipelineTag = document.getElementById('pipelineTag');
 const statsZoom = document.getElementById('statsZoom');
 const splitPercent = document.getElementById('splitPercent');
 
+// Pre-Palette Adjustments DOM Elements
+const adjustmentsPanel = document.getElementById('adjustmentsPanel');
+const btnToggleAdjustments = document.getElementById('btnToggleAdjustments');
+const btnResetAllAdjustments = document.getElementById('btnResetAllAdjustments');
+const btnCloseAdjustments = document.getElementById('btnCloseAdjustments');
+
+const adjHue = document.getElementById('adjHue');
+const adjSat = document.getElementById('adjSat');
+const adjLight = document.getElementById('adjLight');
+const adjBright = document.getElementById('adjBright');
+const adjContrast = document.getElementById('adjContrast');
+
+const adjHueVal = document.getElementById('adjHueVal');
+const adjSatVal = document.getElementById('adjSatVal');
+const adjLightVal = document.getElementById('adjLightVal');
+const adjBrightVal = document.getElementById('adjBrightVal');
+const adjContrastVal = document.getElementById('adjContrastVal');
+
+const curvesCanvas = document.getElementById('curvesCanvas');
+const btnResetCurve = document.getElementById('btnResetCurve');
+
+const adjBlack = document.getElementById('adjBlack');
+const adjGamma = document.getElementById('adjGamma');
+const adjWhite = document.getElementById('adjWhite');
+
+const adjBlackVal = document.getElementById('adjBlackVal');
+const adjGammaVal = document.getElementById('adjGammaVal');
+const adjWhiteVal = document.getElementById('adjWhiteVal');
+
+const btnCopyAdjustments = document.getElementById('btnCopyAdjustments');
+const btnPasteAdjustments = document.getElementById('btnPasteAdjustments');
+const btnApplyAdjustmentsAll = document.getElementById('btnApplyAdjustmentsAll');
+
 // TABS NAVIGATION
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -359,20 +419,29 @@ function syncSliderAndNum(slider, numBox, callback) {
 // SETUP SYNCED CONTROLS (PIXEL SNAPPER)
 syncSliderAndNum(outlineWeight, outlineWeightNum, () => triggerPreviewDebounced());
 syncSliderAndNum(edgeSensitivity, edgeSensitivityNum, () => triggerPreviewDebounced());
-syncSliderAndNum(colorCount, colorCountNum, () => {
+function handleColorBudgetOrKMeansChange() {
+  [paletteSelect, unfakePaletteSelect].forEach(sel => {
+    if (!sel) return;
+    const opt = sel.querySelector('option[value="customEyedropper"]');
+    if (opt) opt.remove();
+    sel.value = 'auto';
+  });
+  if (PALETTES.customEyedropper) delete PALETTES.customEyedropper;
+  if (toggleLivePalette) toggleLivePalette.checked = false;
+  currentActivePalette = null;
+  pickedEyedropperColors = [];
   updatePalettePreview();
   triggerPreviewDebounced();
-});
-syncSliderAndNum(kmeansIter, kmeansIterNum, () => {
-  updatePalettePreview();
-  triggerPreviewDebounced();
-});
+}
+
+syncSliderAndNum(colorCount, colorCountNum, () => handleColorBudgetOrKMeansChange());
+syncSliderAndNum(kmeansIter, kmeansIterNum, () => handleColorBudgetOrKMeansChange());
 syncSliderAndNum(tezumieStrength, tezumieStrengthNum, () => triggerPreviewDebounced());
 
 // SETUP SYNCED CONTROLS (UNFAKE.JS)
 syncSliderAndNum(unfakeDomThreshold, unfakeDomThresholdNum, () => triggerPreviewDebounced());
 syncSliderAndNum(unfakeAlphaThreshold, unfakeAlphaThresholdNum, () => triggerPreviewDebounced());
-syncSliderAndNum(unfakeMaxColors, unfakeMaxColorsNum, () => triggerPreviewDebounced());
+syncSliderAndNum(unfakeMaxColors, unfakeMaxColorsNum, () => handleColorBudgetOrKMeansChange());
 
 // TEZUMIE TOGGLE & METHOD
 tezumieToggle.addEventListener('change', () => {
@@ -817,15 +886,15 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
     } else if (param === 'colorCount') {
       colorCount.value = DEFAULTS.colorCount;
       colorCountNum.value = DEFAULTS.colorCount;
-      updatePalettePreview();
+      handleColorBudgetOrKMeansChange();
     } else if (param === 'kmeansIter') {
       kmeansIter.value = DEFAULTS.kmeansIter;
       kmeansIterNum.value = DEFAULTS.kmeansIter;
-      updatePalettePreview();
+      handleColorBudgetOrKMeansChange();
     } else if (param === 'palette') {
       paletteSelect.value = DEFAULTS.palette;
       unfakePaletteSelect.value = DEFAULTS.palette;
-      updatePalettePreview();
+      handleColorBudgetOrKMeansChange();
     } else if (param === 'unfakeSnapGrid') {
       unfakeSnapGrid.checked = DEFAULTS.unfakeSnapGrid;
     } else if (param === 'unfakeElasticGrid') {
@@ -846,10 +915,11 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
     } else if (param === 'unfakeMaxColors') {
       unfakeMaxColors.value = DEFAULTS.unfakeMaxColors;
       unfakeMaxColorsNum.value = DEFAULTS.unfakeMaxColors;
+      handleColorBudgetOrKMeansChange();
     } else if (param === 'unfakePalette') {
       unfakePaletteSelect.value = DEFAULTS.unfakePalette;
       paletteSelect.value = DEFAULTS.unfakePalette;
-      updatePalettePreview();
+      handleColorBudgetOrKMeansChange();
     }
 
     updateDimensionsUI();
@@ -1133,8 +1203,22 @@ function setZoom(val) {
   applyZoomToCanvas();
 }
 
+function applyCanvasTransform() {
+  if (canvasScaler) {
+    canvasScaler.style.transform = `translate(${Math.round(panOffsetX)}px, ${Math.round(panOffsetY)}px)`;
+  }
+  updateSplitBarPosition();
+}
+
+function resetPan() {
+  panOffsetX = 0;
+  panOffsetY = 0;
+  applyCanvasTransform();
+}
+
 function fitZoomToContainer() {
   if (!rawImageElement) return;
+  resetPan();
   const containerW = viewportScroller.clientWidth - 28;
   const containerH = viewportScroller.clientHeight - 28;
   const imgW = rawImageElement.naturalWidth || rawImageElement.width;
@@ -1152,6 +1236,7 @@ btnZoomIn.addEventListener('click', () => setZoom(zoomPercent + 25));
 btnZoomOut.addEventListener('click', () => setZoom(zoomPercent - 25));
 btnFitZoom.addEventListener('click', () => fitZoomToContainer());
 function resetToNativeScale() {
+  resetPan();
   const nativeZoom = Math.max(5, Math.round(100 / currentDivisor));
   setZoom(nativeZoom);
 }
@@ -1174,7 +1259,7 @@ function applyZoomToCanvas() {
   canvasScaler.style.width = `${currentW}px`;
   canvasScaler.style.height = `${currentH}px`;
 
-  updateSplitBarPosition();
+  applyCanvasTransform();
 }
 
 // GRID TOGGLE
@@ -1318,12 +1403,32 @@ if (batchSelectDropdown) {
 }
 
 window.addEventListener('keydown', (e) => {
-  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+  if (e.ctrlKey || e.metaKey) return; // Prevent hijacking browser shortcuts like Ctrl+S, Ctrl+W
   if (!batchFiles || batchFiles.length <= 1) return;
-  if (e.key === '[' || (e.altKey && e.key === 'ArrowLeft')) {
+
+  // W / PREV: Works on physical key (e.code === 'KeyW'), English ('w','W'), Greek ('ς'), or bracket '[' / Alt+Left / Up
+  const isPrev = (
+    e.code === 'KeyW' ||
+    (!e.code && (e.key === 'w' || e.key === 'W' || e.key === 'ς')) ||
+    e.key === '[' ||
+    (e.altKey && e.key === 'ArrowLeft') ||
+    e.key === 'ArrowUp'
+  );
+
+  // S / NEXT: Works on physical key (e.code === 'KeyS'), English ('s','S'), Greek ('σ'), or bracket ']' / Alt+Right / Down
+  const isNext = (
+    e.code === 'KeyS' ||
+    (!e.code && (e.key === 's' || e.key === 'S' || e.key === 'σ')) ||
+    e.key === ']' ||
+    (e.altKey && e.key === 'ArrowRight') ||
+    e.key === 'ArrowDown'
+  );
+
+  if (isPrev) {
     e.preventDefault();
     stepBatch(-1);
-  } else if (e.key === ']' || (e.altKey && e.key === 'ArrowRight')) {
+  } else if (isNext) {
     e.preventDefault();
     stepBatch(1);
   }
@@ -1404,6 +1509,7 @@ function updateBatchNavUI() {
             li.classList.add('active');
             const tag = li.querySelector('.batch-item-tag');
             if (tag) tag.textContent = '● PREVIEWING';
+            li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           } else {
             li.classList.remove('active');
             const tag = li.querySelector('.batch-item-tag');
@@ -1494,6 +1600,11 @@ function loadImage(file, preserveZoom = false) {
 
         loadedFilenameEl.textContent = loadedFilename;
         origDimBadge.textContent = `${w}x${h} px`;
+
+        // Load or initialize image's individual adjustments from batch memory
+        currentAdjustments = getImageAdjustments(loadedFilename);
+        computeLuminanceHistogram(img);
+        syncAdjustmentsUI();
         
         dropPrompt.style.display = 'none';
         viewerToolbar.style.display = 'flex';
@@ -1509,6 +1620,7 @@ function loadImage(file, preserveZoom = false) {
 
         setTimeout(() => {
           if (!preserveZoom) {
+            resetPan();
             const scrollerW = viewportScroller.clientWidth - 30;
             const scrollerH = viewportScroller.clientHeight - 30;
             if (w > scrollerW || h > scrollerH) {
@@ -1569,7 +1681,9 @@ btnCloseImage.addEventListener('click', () => {
   rawImageElement = null;
   currentSnappedCanvas = null;
   currentActivePalette = null;
+  resetPan();
   stopEyedropper();
+  closeAdjustmentsPanel();
 
   viewerToolbar.style.display = 'none';
   if (batchNavToolbar) batchNavToolbar.style.display = 'none';
@@ -1621,6 +1735,9 @@ async function updatePreviewAsync() {
     const targetW = Math.max(1, Math.round(w / effDiv));
     const targetH = Math.max(1, Math.round(h / effDiv));
 
+    // PRE-PALETTE ADJUSTMENTS (APPLIED TO SOURCE BEFORE QUANTIZATION & DOWNSCALING)
+    applyImageAdjustments(adjustedOffCanvas, adjustedOffCtx, rawOffCanvas, currentAdjustments);
+
     // ============================================
     // BRANCH A: UNFAKE.JS ENGINE
     // ============================================
@@ -1642,7 +1759,7 @@ async function updatePreviewAsync() {
       }
 
       if (window.UnfakeEngine && typeof window.UnfakeEngine.process === 'function') {
-        const res = await window.UnfakeEngine.process(rawOffCanvas, {
+        const res = await window.UnfakeEngine.process(adjustedOffCanvas, {
           scale: effDiv,
           manualScale: unfakeDetectMethod.value === 'manual' ? parseFloat(unfakeManualScale.value) : null,
           detectMethod: unfakeDetectMethod.value,
@@ -1666,6 +1783,10 @@ async function updatePreviewAsync() {
         currentSnappedCanvas = res.canvas;
         currentActivePalette = activePalette || (res.palette ? res.palette.map(p => typeof p === 'string' ? hexToRgb(p) : p) : null);
         activeColors.textContent = res.colorsUsed || (currentActivePalette ? currentActivePalette.length : 'All');
+        if (currentActivePalette && isEyedropperActive && unfakePaletteSelect.value === 'auto') {
+          pickedEyedropperColors = currentActivePalette.map(c => [...c]);
+          updateEyedropperUI();
+        }
         renderSplitView();
         return;
       }
@@ -1684,7 +1805,7 @@ async function updatePreviewAsync() {
     offCanvas.height = targetH;
     let offCtx = offCanvas.getContext('2d');
     offCtx.imageSmoothingEnabled = false;
-    offCtx.drawImage(rawImageElement, 0, 0, targetW, targetH);
+    offCtx.drawImage(adjustedOffCanvas, 0, 0, targetW, targetH);
 
     // STEP 1: PALETTE SELECTION
     let palette = null;
@@ -1725,6 +1846,10 @@ async function updatePreviewAsync() {
 
     if (palette && (pChoice === 'auto' || pChoice === 'reference')) {
       renderSwatches(palette);
+      if (isEyedropperActive && pChoice === 'auto') {
+        pickedEyedropperColors = palette.map(c => [...c]);
+        updateEyedropperUI();
+      }
     }
 
     if (currentSession !== previewSessionId) return;
@@ -1948,10 +2073,14 @@ function updateSplitBarPosition() {
     splitBar.style.display = 'none';
     return;
   }
-  splitBar.style.display = 'block';
-
   const canvasRect = mainCanvas.getBoundingClientRect();
   const wrapperRect = canvasWrapper.getBoundingClientRect();
+
+  if (canvasRect.width === 0 || canvasRect.right <= wrapperRect.left || canvasRect.left >= wrapperRect.right) {
+    splitBar.style.display = 'none';
+    return;
+  }
+  splitBar.style.display = 'block';
 
   // Screen X position of the split divider across the full viewport panel
   const splitScreenX = canvasRect.left + (splitPosition * canvasRect.width) - wrapperRect.left;
@@ -1959,6 +2088,669 @@ function updateSplitBarPosition() {
   splitBar.style.top = '0px';
   splitBar.style.bottom = '0px';
   splitBar.style.height = '100%';
+}
+
+// =============================================================================
+// PRE-PALETTE IMAGE ADJUSTMENTS ENGINE (CURVES, LEVELS, HSL, BRIGHTNESS, CONTRAST)
+// =============================================================================
+
+function getImageAdjustments(filename) {
+  if (!filename) return currentAdjustments;
+  if (!batchImageAdjustments.has(filename)) {
+    batchImageAdjustments.set(filename, createDefaultAdjustments());
+  }
+  return batchImageAdjustments.get(filename);
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  return [h * 360, s, l];
+}
+
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1/6) return p + (q - p) * 6 * t;
+  if (t < 1/2) return q;
+  if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+  return p;
+}
+
+// Fritsch-Carlson Monotone Cubic Spline Interpolation for Photoshop-style Curves
+function getSplineCurveTable(points) {
+  const lut = new Uint8Array(256);
+  if (!points || points.length === 0) {
+    for (let i = 0; i < 256; i++) lut[i] = i;
+    return lut;
+  }
+
+  const pts = [...points].sort((a, b) => a.x - b.x);
+  if (pts.length === 1) {
+    const val = Math.max(0, Math.min(255, Math.round(pts[0].y)));
+    lut.fill(val);
+    return lut;
+  }
+
+  const n = pts.length;
+  const x = pts.map(p => p.x);
+  const y = pts.map(p => p.y);
+
+  const d = new Float64Array(n - 1);
+  for (let k = 0; k < n - 1; k++) {
+    const dx = x[k + 1] - x[k];
+    d[k] = dx === 0 ? 0 : (y[k + 1] - y[k]) / dx;
+  }
+
+  const m = new Float64Array(n);
+  m[0] = d[0];
+  m[n - 1] = d[n - 2];
+  for (let k = 1; k < n - 1; k++) {
+    if (d[k - 1] * d[k] <= 0) {
+      m[k] = 0;
+    } else {
+      m[k] = (d[k - 1] + d[k]) / 2;
+    }
+  }
+
+  for (let k = 0; k < n - 1; k++) {
+    if (d[k] === 0) {
+      m[k] = 0;
+      m[k + 1] = 0;
+    } else {
+      const alpha = m[k] / d[k];
+      const beta = m[k + 1] / d[k];
+      const sumSq = alpha * alpha + beta * beta;
+      if (sumSq > 9) {
+        const tau = 3 / Math.sqrt(sumSq);
+        m[k] = tau * alpha * d[k];
+        m[k + 1] = tau * beta * d[k];
+      }
+    }
+  }
+
+  let seg = 0;
+  for (let i = 0; i < 256; i++) {
+    if (i <= x[0]) {
+      lut[i] = Math.max(0, Math.min(255, Math.round(y[0])));
+      continue;
+    }
+    if (i >= x[n - 1]) {
+      lut[i] = Math.max(0, Math.min(255, Math.round(y[n - 1])));
+      continue;
+    }
+    while (seg < n - 2 && i > x[seg + 1]) {
+      seg++;
+    }
+    const h = x[seg + 1] - x[seg];
+    if (h === 0) {
+      lut[i] = Math.max(0, Math.min(255, Math.round(y[seg])));
+      continue;
+    }
+    const t = (i - x[seg]) / h;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+
+    const val = h00 * y[seg] + h10 * h * m[seg] + h01 * y[seg + 1] + h11 * h * m[seg + 1];
+    lut[i] = Math.max(0, Math.min(255, Math.round(val)));
+  }
+
+  return lut;
+}
+
+// Master 256-byte Tone Mapping Look-Up Table
+function buildAdjustmentLut(adj) {
+  const lut = new Uint8Array(256);
+  const black = Math.min(adj.blackPoint, adj.whitePoint - 1);
+  const white = Math.max(adj.whitePoint, black + 1);
+  const gamma = adj.gamma || 1.0;
+  const bright = adj.brightness || 0;
+  const contrast = adj.contrast || 0;
+  const contrastFactor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+  const curveLut = getSplineCurveTable(adj.curvePoints);
+
+  for (let i = 0; i < 256; i++) {
+    // 1. Levels: Black point, White point, Midtone Gamma
+    let v = i;
+    if (white > black) {
+      let norm = (v - black) / (white - black);
+      norm = Math.max(0, Math.min(1, norm));
+      if (gamma !== 1.0 && norm > 0) {
+        norm = Math.pow(norm, 1.0 / gamma);
+      }
+      v = norm * 255;
+    }
+
+    // 2. Spline Tone Curve
+    const cIdx = Math.max(0, Math.min(255, Math.round(v)));
+    v = curveLut[cIdx];
+
+    // 3. Contrast & Brightness
+    v = contrastFactor * (v - 128) + 128 + bright;
+    lut[i] = Math.max(0, Math.min(255, Math.round(v)));
+  }
+  return lut;
+}
+
+// Apply pre-palette adjustments to target canvas
+function applyImageAdjustments(targetCanvas, targetCtx, srcCanvasOrImg, adj) {
+  if (!srcCanvasOrImg) return;
+  const w = srcCanvasOrImg.naturalWidth || srcCanvasOrImg.width;
+  const h = srcCanvasOrImg.naturalHeight || srcCanvasOrImg.height;
+  if (!w || !h) return;
+
+  if (targetCanvas.width !== w || targetCanvas.height !== h) {
+    targetCanvas.width = w;
+    targetCanvas.height = h;
+  }
+
+  targetCtx.clearRect(0, 0, w, h);
+  targetCtx.imageSmoothingEnabled = false;
+  targetCtx.drawImage(srcCanvasOrImg, 0, 0, w, h);
+
+  const isDefault = (
+    adj.hue === 0 &&
+    adj.saturation === 0 &&
+    adj.lightness === 0 &&
+    adj.brightness === 0 &&
+    adj.contrast === 0 &&
+    adj.blackPoint === 0 &&
+    adj.gamma === 1.0 &&
+    adj.whitePoint === 255 &&
+    (!adj.curvePoints || (adj.curvePoints.length === 2 &&
+      adj.curvePoints[0].x === 0 && adj.curvePoints[0].y === 0 &&
+      adj.curvePoints[1].x === 255 && adj.curvePoints[1].y === 255))
+  );
+
+  if (isDefault) return;
+
+  const imgData = targetCtx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  const lut = buildAdjustmentLut(adj);
+  const hasHsl = (adj.hue !== 0 || adj.saturation !== 0 || adj.lightness !== 0);
+
+  if (!hasHsl) {
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      data[i] = lut[data[i]];
+      data[i + 1] = lut[data[i + 1]];
+      data[i + 2] = lut[data[i + 2]];
+    }
+  } else {
+    const hueDelta = adj.hue;
+    const satMul = 1 + adj.saturation / 100;
+    const lightDelta = adj.lightness / 200;
+
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      const r1 = lut[data[i]];
+      const g1 = lut[data[i + 1]];
+      const b1 = lut[data[i + 2]];
+
+      const hsl = rgbToHsl(r1, g1, b1);
+      let hVal = (hsl[0] + hueDelta) % 360;
+      if (hVal < 0) hVal += 360;
+      let sVal = Math.max(0, Math.min(1, hsl[1] * satMul));
+      let lVal = Math.max(0, Math.min(1, hsl[2] + lightDelta));
+
+      const [r2, g2, b2] = hslToRgb(hVal, sVal, lVal);
+      data[i] = r2;
+      data[i + 1] = g2;
+      data[i + 2] = b2;
+    }
+  }
+
+  targetCtx.putImageData(imgData, 0, 0);
+}
+
+// Compute 256-bucket luminance histogram of raw source
+function computeLuminanceHistogram(srcElement) {
+  cachedHistogram.fill(0);
+  if (!srcElement) return;
+  const w = srcElement.naturalWidth || srcElement.width;
+  const h = srcElement.naturalHeight || srcElement.height;
+  if (!w || !h) return;
+
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = Math.min(w, 256);
+  tempCanvas.height = Math.min(h, 256);
+  const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+  tempCtx.drawImage(srcElement, 0, 0, tempCanvas.width, tempCanvas.height);
+
+  const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
+  let maxCount = 0;
+  for (let i = 0; i < imgData.length; i += 4) {
+    if (imgData[i + 3] < 32) continue;
+    const lum = Math.round(0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2]);
+    cachedHistogram[lum]++;
+    if (cachedHistogram[lum] > maxCount) maxCount = cachedHistogram[lum];
+  }
+
+  if (maxCount > 0) {
+    for (let i = 0; i < 256; i++) {
+      cachedHistogram[i] /= maxCount;
+    }
+  }
+}
+
+// Draw curves canvas with histogram, grid, diagonal and interactive spline curve
+function drawCurvesCanvas() {
+  if (!curvesCanvas) return;
+  const cCtx = curvesCanvas.getContext('2d');
+  const w = curvesCanvas.width;
+  const h = curvesCanvas.height;
+
+  cCtx.clearRect(0, 0, w, h);
+
+  // 1. Background
+  cCtx.fillStyle = '#080b11';
+  cCtx.fillRect(0, 0, w, h);
+
+  // 2. Luminance Histogram (Semi-transparent bars)
+  if (cachedHistogram) {
+    cCtx.fillStyle = 'rgba(0, 240, 255, 0.14)';
+    for (let i = 0; i < 256; i++) {
+      const val = cachedHistogram[i];
+      if (val > 0) {
+        const barH = Math.round(val * (h - 8));
+        cCtx.fillRect(i, h - barH, 1, barH);
+      }
+    }
+  }
+
+  // 3. 4x4 Grid
+  cCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  cCtx.lineWidth = 1;
+  cCtx.beginPath();
+  for (let i = 1; i < 4; i++) {
+    const gx = Math.round((w / 4) * i);
+    const gy = Math.round((h / 4) * i);
+    cCtx.moveTo(gx, 0);
+    cCtx.lineTo(gx, h);
+    cCtx.moveTo(0, gy);
+    cCtx.lineTo(w, gy);
+  }
+  cCtx.stroke();
+
+  // 4. Diagonal guide
+  cCtx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+  cCtx.setLineDash([3, 3]);
+  cCtx.beginPath();
+  cCtx.moveTo(0, h);
+  cCtx.lineTo(w, 0);
+  cCtx.stroke();
+  cCtx.setLineDash([]);
+
+  // 5. Monotone Spline Curve
+  const curveLut = getSplineCurveTable(currentAdjustments.curvePoints);
+  cCtx.strokeStyle = '#00f0ff';
+  cCtx.lineWidth = 2;
+  cCtx.shadowColor = 'rgba(0, 240, 255, 0.5)';
+  cCtx.shadowBlur = 4;
+  cCtx.beginPath();
+  for (let x = 0; x < 256; x++) {
+    const yVal = curveLut[x];
+    const cy = h - (yVal / 255) * h;
+    if (x === 0) cCtx.moveTo(x, cy);
+    else cCtx.lineTo(x, cy);
+  }
+  cCtx.stroke();
+  cCtx.shadowBlur = 0;
+
+  // 6. Interactive Control Points
+  currentAdjustments.curvePoints.forEach((pt, idx) => {
+    const cx = pt.x;
+    const cy = h - (pt.y / 255) * h;
+    const isSelected = (idx === draggedCurvePointIdx);
+
+    cCtx.beginPath();
+    cCtx.arc(cx, cy, isSelected ? 5.5 : 4, 0, Math.PI * 2);
+    cCtx.fillStyle = isSelected ? '#ffffff' : '#00f0ff';
+    cCtx.fill();
+    cCtx.strokeStyle = '#080b11';
+    cCtx.lineWidth = 1.5;
+    cCtx.stroke();
+  });
+}
+
+function syncAdjustmentsUI() {
+  if (adjHue) {
+    adjHue.value = currentAdjustments.hue;
+    adjHueVal.textContent = `${currentAdjustments.hue}°`;
+  }
+  if (adjSat) {
+    adjSat.value = currentAdjustments.saturation;
+    adjSatVal.textContent = `${currentAdjustments.saturation}%`;
+  }
+  if (adjLight) {
+    adjLight.value = currentAdjustments.lightness;
+    adjLightVal.textContent = `${currentAdjustments.lightness}%`;
+  }
+  if (adjBright) {
+    adjBright.value = currentAdjustments.brightness;
+    adjBrightVal.textContent = `${currentAdjustments.brightness}`;
+  }
+  if (adjContrast) {
+    adjContrast.value = currentAdjustments.contrast;
+    adjContrastVal.textContent = `${currentAdjustments.contrast}`;
+  }
+  if (adjBlack) {
+    adjBlack.value = currentAdjustments.blackPoint;
+    adjBlackVal.textContent = `${currentAdjustments.blackPoint}`;
+  }
+  if (adjGamma) {
+    adjGamma.value = currentAdjustments.gamma;
+    adjGammaVal.textContent = currentAdjustments.gamma.toFixed(2);
+  }
+  if (adjWhite) {
+    adjWhite.value = currentAdjustments.whitePoint;
+    adjWhiteVal.textContent = `${currentAdjustments.whitePoint}`;
+  }
+  drawCurvesCanvas();
+}
+
+function openAdjustmentsPanel() {
+  if (!adjustmentsPanel) return;
+  adjustmentsPanel.style.display = 'flex';
+  isAdjustmentsPanelOpen = true;
+  if (btnToggleAdjustments) btnToggleAdjustments.classList.add('btn-tool-active');
+  syncAdjustmentsUI();
+}
+
+function closeAdjustmentsPanel() {
+  if (!adjustmentsPanel) return;
+  adjustmentsPanel.style.display = 'none';
+  isAdjustmentsPanelOpen = false;
+  if (btnToggleAdjustments) btnToggleAdjustments.classList.remove('btn-tool-active');
+}
+
+function toggleAdjustmentsPanel() {
+  if (isAdjustmentsPanelOpen) {
+    closeAdjustmentsPanel();
+  } else {
+    openAdjustmentsPanel();
+  }
+}
+
+let isDraggingCurve = false;
+
+function initAdjustmentsEvents() {
+  if (btnToggleAdjustments) {
+    btnToggleAdjustments.addEventListener('click', toggleAdjustmentsPanel);
+  }
+  if (btnCloseAdjustments) {
+    btnCloseAdjustments.addEventListener('click', closeAdjustmentsPanel);
+  }
+  if (btnResetAllAdjustments) {
+    btnResetAllAdjustments.addEventListener('click', () => {
+      Object.assign(currentAdjustments, createDefaultAdjustments());
+      syncAdjustmentsUI();
+      triggerPreviewDebounced();
+    });
+  }
+  if (btnResetCurve) {
+    btnResetCurve.addEventListener('click', () => {
+      currentAdjustments.curvePoints = [{ x: 0, y: 0 }, { x: 255, y: 255 }];
+      drawCurvesCanvas();
+      triggerPreviewDebounced();
+    });
+  }
+
+  // Hue
+  if (adjHue) {
+    adjHue.addEventListener('input', () => {
+      currentAdjustments.hue = parseInt(adjHue.value) || 0;
+      adjHueVal.textContent = `${currentAdjustments.hue}°`;
+      triggerPreviewDebounced();
+    });
+  }
+  // Saturation
+  if (adjSat) {
+    adjSat.addEventListener('input', () => {
+      currentAdjustments.saturation = parseInt(adjSat.value) || 0;
+      adjSatVal.textContent = `${currentAdjustments.saturation}%`;
+      triggerPreviewDebounced();
+    });
+  }
+  // Lightness
+  if (adjLight) {
+    adjLight.addEventListener('input', () => {
+      currentAdjustments.lightness = parseInt(adjLight.value) || 0;
+      adjLightVal.textContent = `${currentAdjustments.lightness}%`;
+      triggerPreviewDebounced();
+    });
+  }
+  // Brightness
+  if (adjBright) {
+    adjBright.addEventListener('input', () => {
+      currentAdjustments.brightness = parseInt(adjBright.value) || 0;
+      adjBrightVal.textContent = `${currentAdjustments.brightness}`;
+      triggerPreviewDebounced();
+    });
+  }
+  // Contrast
+  if (adjContrast) {
+    adjContrast.addEventListener('input', () => {
+      currentAdjustments.contrast = parseInt(adjContrast.value) || 0;
+      adjContrastVal.textContent = `${currentAdjustments.contrast}`;
+      triggerPreviewDebounced();
+    });
+  }
+
+  // Black Point
+  if (adjBlack) {
+    adjBlack.addEventListener('input', () => {
+      let val = parseInt(adjBlack.value) || 0;
+      if (val >= currentAdjustments.whitePoint) val = currentAdjustments.whitePoint - 1;
+      currentAdjustments.blackPoint = val;
+      adjBlack.value = val;
+      adjBlackVal.textContent = `${val}`;
+      triggerPreviewDebounced();
+    });
+  }
+  // Midtone Gamma
+  if (adjGamma) {
+    adjGamma.addEventListener('input', () => {
+      currentAdjustments.gamma = parseFloat(adjGamma.value) || 1.0;
+      adjGammaVal.textContent = currentAdjustments.gamma.toFixed(2);
+      triggerPreviewDebounced();
+    });
+  }
+  // White Point
+  if (adjWhite) {
+    adjWhite.addEventListener('input', () => {
+      let val = parseInt(adjWhite.value) || 255;
+      if (val <= currentAdjustments.blackPoint) val = currentAdjustments.blackPoint + 1;
+      currentAdjustments.whitePoint = val;
+      adjWhite.value = val;
+      adjWhiteVal.textContent = `${val}`;
+      triggerPreviewDebounced();
+    });
+  }
+
+  // Interactive Curves Canvas Mouse Events
+  if (curvesCanvas) {
+    curvesCanvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+
+    curvesCanvas.addEventListener('mousedown', (e) => {
+      const rect = curvesCanvas.getBoundingClientRect();
+      const mouseX = Math.round((e.clientX - rect.left) * (curvesCanvas.width / rect.width));
+      const mouseY = Math.round((e.clientY - rect.top) * (curvesCanvas.height / rect.height));
+      const h = curvesCanvas.height;
+      const curveY = Math.max(0, Math.min(255, Math.round(255 - (mouseY / h) * 255)));
+      const curveX = Math.max(0, Math.min(255, mouseX));
+
+      // Check if clicked on existing point
+      let foundIdx = -1;
+      currentAdjustments.curvePoints.forEach((pt, idx) => {
+        const ptCanvasX = pt.x;
+        const ptCanvasY = h - (pt.y / 255) * h;
+        const dist = Math.hypot(mouseX - ptCanvasX, mouseY - ptCanvasY);
+        if (dist <= 8) foundIdx = idx;
+      });
+
+      // Right-click: Delete point (if not endpoints)
+      if (e.button === 2) {
+        if (foundIdx > 0 && foundIdx < currentAdjustments.curvePoints.length - 1) {
+          currentAdjustments.curvePoints.splice(foundIdx, 1);
+          drawCurvesCanvas();
+          triggerPreviewDebounced();
+        }
+        return;
+      }
+
+      if (e.button !== 0) return; // Only left-click for drag / add
+
+      if (foundIdx !== -1) {
+        draggedCurvePointIdx = foundIdx;
+      } else {
+        // Add new point
+        const newPt = { x: curveX, y: curveY };
+        currentAdjustments.curvePoints.push(newPt);
+        currentAdjustments.curvePoints.sort((a, b) => a.x - b.x);
+        draggedCurvePointIdx = currentAdjustments.curvePoints.indexOf(newPt);
+      }
+
+      isDraggingCurve = true;
+      drawCurvesCanvas();
+      triggerPreviewDebounced();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingCurve || draggedCurvePointIdx === -1) return;
+      const rect = curvesCanvas.getBoundingClientRect();
+      const mouseX = Math.round((e.clientX - rect.left) * (curvesCanvas.width / rect.width));
+      const mouseY = Math.round((e.clientY - rect.top) * (curvesCanvas.height / rect.height));
+      const h = curvesCanvas.height;
+      const curveY = Math.max(0, Math.min(255, Math.round(255 - (mouseY / h) * 255)));
+      const curveX = Math.max(0, Math.min(255, mouseX));
+
+      const pts = currentAdjustments.curvePoints;
+      const pt = pts[draggedCurvePointIdx];
+      if (!pt) return;
+
+      if (draggedCurvePointIdx === 0) {
+        pt.x = 0;
+        pt.y = curveY;
+      } else if (draggedCurvePointIdx === pts.length - 1) {
+        pt.x = 255;
+        pt.y = curveY;
+      } else {
+        const minX = pts[draggedCurvePointIdx - 1].x + 1;
+        const maxX = pts[draggedCurvePointIdx + 1].x - 1;
+        pt.x = Math.max(minX, Math.min(maxX, curveX));
+        pt.y = curveY;
+      }
+
+      drawCurvesCanvas();
+      triggerPreviewDebounced();
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0 && isDraggingCurve) {
+        isDraggingCurve = false;
+        draggedCurvePointIdx = -1;
+        drawCurvesCanvas();
+      }
+    });
+  }
+
+  // 1. COPY ADJUSTMENTS
+  if (btnCopyAdjustments) {
+    btnCopyAdjustments.addEventListener('click', () => {
+      clipboardAdjustments = JSON.parse(JSON.stringify(currentAdjustments));
+      const origText = btnCopyAdjustments.textContent;
+      btnCopyAdjustments.textContent = 'COPIED!';
+      btnCopyAdjustments.classList.add('btn-tool-active');
+      setTimeout(() => {
+        btnCopyAdjustments.textContent = origText;
+        btnCopyAdjustments.classList.remove('btn-tool-active');
+      }, 1000);
+    });
+  }
+
+  // 2. PASTE ADJUSTMENTS
+  if (btnPasteAdjustments) {
+    btnPasteAdjustments.addEventListener('click', () => {
+      if (!clipboardAdjustments) {
+        const origText = btnPasteAdjustments.textContent;
+        btnPasteAdjustments.textContent = 'NOTHING TO PASTE!';
+        btnPasteAdjustments.style.color = 'var(--accent-orange)';
+        setTimeout(() => {
+          btnPasteAdjustments.textContent = origText;
+          btnPasteAdjustments.style.color = '';
+        }, 1000);
+        return;
+      }
+      Object.assign(currentAdjustments, JSON.parse(JSON.stringify(clipboardAdjustments)));
+      syncAdjustmentsUI();
+      triggerPreviewDebounced();
+
+      const origText = btnPasteAdjustments.textContent;
+      btnPasteAdjustments.textContent = 'PASTED!';
+      btnPasteAdjustments.classList.add('btn-tool-active');
+      setTimeout(() => {
+        btnPasteAdjustments.textContent = origText;
+        btnPasteAdjustments.classList.remove('btn-tool-active');
+      }, 1000);
+    });
+  }
+
+  // 3. APPLY ADJUSTMENTS TO ALL
+  if (btnApplyAdjustmentsAll) {
+    btnApplyAdjustmentsAll.addEventListener('click', () => {
+      const confirmed = confirm("Apply these adjustments to all images in the batch queue?");
+      if (!confirmed) return;
+
+      const serialized = JSON.stringify(currentAdjustments);
+      if (batchFiles && batchFiles.length > 0) {
+        batchFiles.forEach(f => {
+          batchImageAdjustments.set(f.name, JSON.parse(serialized));
+        });
+      } else if (loadedFilename) {
+        batchImageAdjustments.set(loadedFilename, JSON.parse(serialized));
+      }
+
+      const origText = btnApplyAdjustmentsAll.textContent;
+      btnApplyAdjustmentsAll.textContent = 'APPLIED TO ALL!';
+      setTimeout(() => {
+        btnApplyAdjustmentsAll.textContent = origText;
+      }, 1200);
+    });
+  }
 }
 
 // RENDER SPLIT VIEW
@@ -1993,13 +2785,13 @@ function renderSplitView() {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Left: Original
+  // Left: Adjusted Original (Pre-Palette)
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, splitX, h);
   ctx.clip();
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(rawImageElement, 0, 0, w, h);
+  ctx.drawImage((adjustedOffCanvas && adjustedOffCanvas.width > 0) ? adjustedOffCanvas : rawImageElement, 0, 0, w, h);
   ctx.restore();
 
   // Right: Snapped Nearest-Neighbor
@@ -2130,12 +2922,14 @@ function startPaletteEditor() {
     return;
   }
   isEyedropperActive = true;
+  if (splitBar) splitBar.classList.add('plain-mode');
   eyedropperHud.style.display = 'flex';
+  openAdjustmentsPanel();
 
   [btnStartEyedropper, btnUnfakeStartEyedropper].forEach(b => {
     if (b) {
       b.classList.add('btn-eyedropper-active');
-      b.innerHTML = '&#9998; EDITING PALETTE...';
+      b.textContent = 'EDITING PALETTE...';
     }
   });
 
@@ -2169,13 +2963,14 @@ function startPaletteEditor() {
 
 function stopEyedropper() {
   isEyedropperActive = false;
+  if (splitBar) splitBar.classList.remove('plain-mode');
   eyedropperHud.style.display = 'none';
   eyedropperLoupe.style.display = 'none';
 
   [btnStartEyedropper, btnUnfakeStartEyedropper].forEach(b => {
     if (b) {
       b.classList.remove('btn-eyedropper-active');
-      b.innerHTML = '&#9998; EDIT ACTIVE PALETTE';
+      b.textContent = 'EDIT ACTIVE PALETTE';
     }
   });
 
@@ -2356,11 +3151,13 @@ canvasScaler.addEventListener('click', (e) => {
 
   const normX = mouseX / rect.width;
   const normY = mouseY / rect.height;
-  const imgX = Math.floor(normX * rawOffCanvas.width);
-  const imgY = Math.floor(normY * rawOffCanvas.height);
+  const sampleCanvas = (adjustedOffCanvas && adjustedOffCanvas.width > 0) ? adjustedOffCanvas : rawOffCanvas;
+  const sampleCtx = (adjustedOffCanvas && adjustedOffCanvas.width > 0) ? adjustedOffCtx : rawOffCtx;
+  const imgX = Math.floor(normX * sampleCanvas.width);
+  const imgY = Math.floor(normY * sampleCanvas.height);
 
-  if (imgX >= 0 && imgX < rawOffCanvas.width && imgY >= 0 && imgY < rawOffCanvas.height) {
-    const p = rawOffCtx.getImageData(imgX, imgY, 1, 1).data;
+  if (imgX >= 0 && imgX < sampleCanvas.width && imgY >= 0 && imgY < sampleCanvas.height) {
+    const p = sampleCtx.getImageData(imgX, imgY, 1, 1).data;
     const r = p[0], g = p[1], b = p[2], a = p[3];
 
     if (a === 0) {
@@ -3467,11 +4264,13 @@ window.addEventListener('mousemove', (e) => {
 
     const normX = (e.clientX - rect.left) / rect.width;
     const normY = (e.clientY - rect.top) / rect.height;
-    const imgX = Math.floor(normX * rawOffCanvas.width);
-    const imgY = Math.floor(normY * rawOffCanvas.height);
+    const sampleCanvas = (adjustedOffCanvas && adjustedOffCanvas.width > 0) ? adjustedOffCanvas : rawOffCanvas;
+    const sampleCtx = (adjustedOffCanvas && adjustedOffCanvas.width > 0) ? adjustedOffCtx : rawOffCtx;
+    const imgX = Math.floor(normX * sampleCanvas.width);
+    const imgY = Math.floor(normY * sampleCanvas.height);
 
-    if (imgX >= 0 && imgX < rawOffCanvas.width && imgY >= 0 && imgY < rawOffCanvas.height) {
-      const p = rawOffCtx.getImageData(imgX, imgY, 1, 1).data;
+    if (imgX >= 0 && imgX < sampleCanvas.width && imgY >= 0 && imgY < sampleCanvas.height) {
+      const p = sampleCtx.getImageData(imgX, imgY, 1, 1).data;
       const r = p[0], g = p[1], b = p[2], a = p[3];
       if (a === 0) {
         loupeColor.style.backgroundColor = 'transparent';
@@ -3752,6 +4551,7 @@ async function processBatch() {
         img.onload = async () => {
           rawImageElement = img;
           loadedFilename = file.name;
+          currentAdjustments = getImageAdjustments(loadedFilename);
           const w = img.naturalWidth || img.width;
           const h = img.naturalHeight || img.height;
           rawOffCanvas.width = w;
@@ -3861,80 +4661,107 @@ viewportScroller.addEventListener('wheel', (e) => {
   e.preventDefault();
 
   const delta = e.deltaY < 0 ? 15 : -15;
-  const rect = viewportScroller.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-
-  const prevW = mainCanvas.clientWidth;
-  const prevH = mainCanvas.clientHeight;
-  const prevScrollX = viewportScroller.scrollLeft;
-  const prevScrollY = viewportScroller.scrollTop;
-
   const oldZoom = zoomPercent;
   const newZoom = Math.max(5, Math.min(1000, oldZoom + delta));
   if (newZoom === oldZoom) return;
 
-  setZoom(newZoom);
+  const rect = viewportScroller.getBoundingClientRect();
+  const mx = e.clientX - (rect.left + rect.width / 2);
+  const my = e.clientY - (rect.top + rect.height / 2);
 
-  const newW = mainCanvas.clientWidth;
-  const newH = mainCanvas.clientHeight;
-  if (prevW > 0 && prevH > 0) {
-    viewportScroller.scrollLeft = (prevScrollX + mouseX) * (newW / prevW) - mouseX;
-    viewportScroller.scrollTop = (prevScrollY + mouseY) * (newH / prevH) - mouseY;
-  }
-  updateSplitBarPosition();
+  const factor = newZoom / oldZoom;
+  panOffsetX = mx - (mx - panOffsetX) * factor;
+  panOffsetY = my - (my - panOffsetY) * factor;
+
+  setZoom(newZoom);
 }, { passive: false });
 
-// MIDDLE CLICK HOLD + DRAG PAN (SUPPORT ON VIEWPORT & CANVAS WRAPPER)
+// MIDDLE CLICK HOLD + DRAG PAN (NATURAL / PHOTOSHOP HAND TOOL STYLE)
 let isPanning = false;
 let panStartX = 0;
 let panStartY = 0;
-let scrollStartX = 0;
-let scrollStartY = 0;
+let initialPanX = 0;
+let initialPanY = 0;
 
 function startMiddlePan(e) {
   if (e.button === 1) { // Middle click button
     e.preventDefault();
+    e.stopPropagation();
     isPanning = true;
     panStartX = e.clientX;
     panStartY = e.clientY;
-    scrollStartX = viewportScroller.scrollLeft;
-    scrollStartY = viewportScroller.scrollTop;
-    viewportScroller.style.cursor = 'grabbing';
+    initialPanX = panOffsetX;
+    initialPanY = panOffsetY;
+    document.body.style.cursor = 'grabbing';
     canvasWrapper.style.cursor = 'grabbing';
+    viewportScroller.style.cursor = 'grabbing';
+    if (canvasScaler) canvasScaler.style.cursor = 'grabbing';
+    if (mainCanvas) mainCanvas.style.cursor = 'grabbing';
   }
 }
 
-viewportScroller.addEventListener('mousedown', startMiddlePan);
-canvasWrapper.addEventListener('mousedown', startMiddlePan);
+function stopMiddlePan() {
+  if (isPanning) {
+    isPanning = false;
+    document.body.style.cursor = '';
+    canvasWrapper.style.cursor = '';
+    viewportScroller.style.cursor = '';
+    if (canvasScaler) canvasScaler.style.cursor = '';
+    if (mainCanvas) mainCanvas.style.cursor = '';
+  }
+}
+
+// Capture mousedown on canvasWrapper & viewportScroller to prevent Windows autoscroll circle
+canvasWrapper.addEventListener('mousedown', startMiddlePan, true);
+viewportScroller.addEventListener('mousedown', startMiddlePan, true);
 
 window.addEventListener('mousemove', (e) => {
   if (isPanning) {
     e.preventDefault();
     const dx = e.clientX - panStartX;
     const dy = e.clientY - panStartY;
-    viewportScroller.scrollLeft = scrollStartX - dx;
-    viewportScroller.scrollTop = scrollStartY - dy;
-    updateSplitBarPosition();
+    // NATURAL / DIRECT PAN: dragging mouse right (dx > 0) moves image right
+    // dragging mouse down (dy > 0) moves image down
+    panOffsetX = initialPanX + dx;
+    panOffsetY = initialPanY + dy;
+    applyCanvasTransform();
   }
 });
 
 window.addEventListener('mouseup', (e) => {
   if (e.button === 1 && isPanning) {
-    isPanning = false;
-    viewportScroller.style.cursor = '';
-    canvasWrapper.style.cursor = '';
+    e.preventDefault();
+    stopMiddlePan();
   }
 });
 
-viewportScroller.addEventListener('auxclick', (e) => {
-  if (e.button === 1) e.preventDefault();
-});
+window.addEventListener('blur', stopMiddlePan);
+
+// Prevent Windows autoscroll navigation on middle click
 canvasWrapper.addEventListener('auxclick', (e) => {
+  if (e.button === 1) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
+viewportScroller.addEventListener('auxclick', (e) => {
+  if (e.button === 1) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
+window.addEventListener('auxclick', (e) => {
   if (e.button === 1) e.preventDefault();
 });
 
-viewportScroller.addEventListener('scroll', updateSplitBarPosition);
+// Double middle-click: reset pan to center
+canvasWrapper.addEventListener('dblclick', (e) => {
+  if (e.button === 1) {
+    e.preventDefault();
+    resetPan();
+  }
+}, true);
+
 window.addEventListener('resize', updateSplitBarPosition);
 
 // CTRL+ / CTRL- / CTRL+0 KEYBOARD ZOOM OVERRIDE
@@ -3955,4 +4782,8 @@ window.addEventListener('keydown', (e) => {
 
 // INITIAL STARTUP: LOAD SAVED GPL PALETTES FROM ./temp/saved/palettes/
 loadSavedPalettes();
+
+// INITIALIZE PRE-PALETTE ADJUSTMENTS ENGINE & EVENTS
+initAdjustmentsEvents();
+
 
