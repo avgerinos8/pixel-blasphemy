@@ -39,8 +39,8 @@
             <button class="btn btn-primary btn-open-main" id="btnOpenMainImage">
               &#128194; OPEN MAIN IMAGE
             </button>
-            <button class="btn btn-secondary btn-open-palette" id="btnOpenPaletteImage">
-              &#127912; OPEN IMAGE FOR PALETTE
+            <button class="btn btn-secondary btn-open-palette" id="btnOpenPaletteImage" title="Open Image or GPL Palette to extract / load color palette">
+              &#127912; OPEN IMAGE / GPL PALETTE
             </button>
             <button class="btn btn-danger btn-reset-master" id="btnResetAll" title="Reset all processing options to default settings">
               &#8634; RESET ALL
@@ -60,7 +60,8 @@
 
           <!-- HIDDEN FILE INPUTS (TRIGGERED BY BUTTONS OR DRAG-DROP) -->
           <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
-          <input type="file" id="paletteFileInput" accept="image/*" style="display:none;">
+          <input type="file" id="paletteFileInput" accept="image/*, .gpl, text/plain" style="display:none;">
+          <input type="file" id="batchAddFileInput" accept="image/*" multiple style="display:none;">
 
           <!-- ENGINE MODE SWITCHER (PIXEL SNAPPER VS UNFAKE.JS) -->
           <div class="engine-switch-container">
@@ -301,8 +302,8 @@
                   <option value="gameboy">Game Boy Classic (4 Shades)</option>
                 </select>
 
-                <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnStartEyedropper" title="Sample custom palette directly from original image with eyedropper">
-                  &#128394; + ADD PALETTE (EYEDROPPER)
+                <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnStartEyedropper" title="Edit current active palette colors or sample new ones with eyedropper">
+                  &#9998; EDIT ACTIVE PALETTE
                 </button>
 
                 <!-- ACTIVE REFERENCE PALETTE BADGE -->
@@ -319,6 +320,10 @@
               <!-- BATCH QUEUE ACCORDION -->
               <details class="batch-drawer" id="batchDrawer">
                 <summary class="batch-summary">&#128193; BATCH FILE QUEUE (<span id="batchCount">0</span>)</summary>
+                <div class="batch-drawer-actions">
+                  <button type="button" class="btn-tool-sm btn-batch-add-files" id="btnAddBatchFiles1">+ ADD IMAGES</button>
+                  <button type="button" class="btn-tool-sm btn-batch-clear" id="btnClearBatch1" title="Clear batch queue">CLEAR</button>
+                </div>
                 <ul class="batch-list" id="batchList">
                   <li class="empty-hint">Drop multiple images here to batch process.</li>
                 </ul>
@@ -548,8 +553,8 @@
                   <option value="gameboy">Game Boy Classic (4 Shades)</option>
                 </select>
 
-                <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnUnfakeStartEyedropper" title="Sample custom palette directly from original image with eyedropper">
-                  &#128394; + ADD PALETTE (EYEDROPPER)
+                <button type="button" class="btn btn-secondary w-full btn-eyedropper-trigger" id="btnUnfakeStartEyedropper" title="Edit current active palette colors or sample new ones with eyedropper">
+                  &#9998; EDIT ACTIVE PALETTE
                 </button>
 
                 <!-- ACTIVE REFERENCE PALETTE BADGE -->
@@ -566,6 +571,10 @@
               <!-- BATCH QUEUE ACCORDION -->
               <details class="batch-drawer" id="unfakeBatchDrawer">
                 <summary class="batch-summary">&#128193; BATCH FILE QUEUE (<span id="unfakeBatchCount">0</span>)</summary>
+                <div class="batch-drawer-actions">
+                  <button type="button" class="btn-tool-sm btn-batch-add-files" id="btnAddBatchFiles2">+ ADD IMAGES</button>
+                  <button type="button" class="btn-tool-sm btn-batch-clear" id="btnClearBatch2" title="Clear batch queue">CLEAR</button>
+                </div>
                 <ul class="batch-list" id="unfakeBatchList">
                   <li class="empty-hint">Drop multiple images here to batch process.</li>
                 </ul>
@@ -582,6 +591,16 @@
             <div class="file-info-badge">
               <span id="loadedFilename">image.png</span>
               <span class="dim-badge" id="origDimBadge">0x0</span>
+            </div>
+
+            <!-- BATCH NAVIGATION BAR (ACTIVE WHEN BATCH HAS MULTIPLE FILES) -->
+            <div class="batch-nav-toolbar" id="batchNavToolbar" style="display:none;">
+              <button type="button" class="btn-tool btn-batch-nav" id="btnBatchPrev" title="Previous Image in Batch (Hotkey: [ or Left Arrow)">◀ PREV</button>
+              <div class="batch-nav-selector-wrapper">
+                <span class="batch-nav-badge" id="batchNavBadge">1 / 1</span>
+                <select id="batchSelectDropdown" class="batch-select-dropdown" title="Select image in batch queue"></select>
+              </div>
+              <button type="button" class="btn-tool btn-batch-nav" id="btnBatchNext" title="Next Image in Batch (Hotkey: ] or Right Arrow)">NEXT ▶</button>
             </div>
             
             <div class="toolbar-actions">
@@ -610,7 +629,7 @@
               <p><small>Supports any size (e.g. 500x370, 1024x1024) from Gemini, Nano-Banana, or ComfyUI</small></p>
               <div class="drop-actions">
                 <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">&#128194; BROWSE MAIN IMAGE</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('paletteFileInput').click()">&#127912; BROWSE PALETTE IMAGE</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('paletteFileInput').click()">&#127912; BROWSE PALETTE (IMAGE / .GPL)</button>
               </div>
             </div>
 
@@ -627,14 +646,15 @@
               <!-- FLOATING EYEDROPPER HUD TOOLBAR -->
               <div class="eyedropper-hud" id="eyedropperHud" style="display:none;">
                 <div class="eyedropper-hud-header">
-                  <span class="eyedropper-hud-title">&#128394; EYEDROPPER PALETTE BUILDER</span>
+                  <span class="eyedropper-hud-title">&#9998; PALETTE EDITOR &amp; EYEDROPPER</span>
                   <label class="toggle-switch-wrapper" id="livePaletteToggleLabel" title="Toggle Live Palette Preview on Canvas">
-                    <span>LIVE PREVIEW:</span>
+                    <span>LIVE:</span>
                     <input type="checkbox" id="toggleLivePalette">
                     <span class="toggle-slider-track"></span>
                   </label>
+                  <button type="button" class="btn-tool-sm" id="btnEyedropperReload" title="Reload original colors of currently selected palette">&#8634; RELOAD</button>
                   <button type="button" class="btn-tool-sm" id="btnEyedropperClear" title="Clear all picked colors">CLEAR</button>
-                  <button type="button" class="btn-tool-sm btn-tool-danger" id="btnEyedropperCancel" title="Cancel eyedropper mode">&#10005; CANCEL</button>
+                  <button type="button" class="btn-tool-sm btn-tool-danger" id="btnEyedropperCancel" title="Close palette editor">&#10005; CLOSE</button>
                 </div>
                 <div class="eyedropper-hud-hint" id="eyedropperHint">Click image to sample &bull; Left-Click: Edit color &bull; Right-Click: Delete</div>
                 <div class="eyedropper-swatches" id="eyedropperSwatches">

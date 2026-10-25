@@ -89,6 +89,7 @@ let splitPosition = 0.5;
 let zoomPercent = 100;
 let showGrid = false;
 let batchFiles = [];
+let currentBatchIndex = 0;
 
 // Concurrency & Session Management
 const PREVIEW_DEBOUNCE_MS = 220; // Multi-input debounce delay (ms)
@@ -196,6 +197,7 @@ const eyedropperHint = document.getElementById('eyedropperHint');
 const toggleLivePalette = document.getElementById('toggleLivePalette');
 const savePaletteName = document.getElementById('savePaletteName');
 const btnSaveCustomPalette = document.getElementById('btnSaveCustomPalette');
+const btnEyedropperReload = document.getElementById('btnEyedropperReload');
 const btnEyedropperClear = document.getElementById('btnEyedropperClear');
 const btnEyedropperCancel = document.getElementById('btnEyedropperCancel');
 const eyedropperSwatches = document.getElementById('eyedropperSwatches');
@@ -296,6 +298,18 @@ const unfakeBatchDrawer = document.getElementById('unfakeBatchDrawer');
 const unfakeBatchCount = document.getElementById('unfakeBatchCount');
 const unfakeBatchList = document.getElementById('unfakeBatchList');
 const btnUnfakeProcessBatch = document.getElementById('btnUnfakeProcessBatch');
+
+// Batch Actions & Navigation
+const batchAddFileInput = document.getElementById('batchAddFileInput');
+const btnAddBatchFiles1 = document.getElementById('btnAddBatchFiles1');
+const btnClearBatch1 = document.getElementById('btnClearBatch1');
+const btnAddBatchFiles2 = document.getElementById('btnAddBatchFiles2');
+const btnClearBatch2 = document.getElementById('btnClearBatch2');
+const batchNavToolbar = document.getElementById('batchNavToolbar');
+const btnBatchPrev = document.getElementById('btnBatchPrev');
+const btnBatchNext = document.getElementById('btnBatchNext');
+const batchNavBadge = document.getElementById('batchNavBadge');
+const batchSelectDropdown = document.getElementById('batchSelectDropdown');
 
 // Download & Stats
 const btnDownload = document.getElementById('btnDownload');
@@ -843,14 +857,113 @@ document.querySelectorAll('.btn-reset-param').forEach(btn => {
   });
 });
 
-﻿// REFERENCE IMAGE PALETTE UPLOADER
+// =============================================================================
+// REFERENCE PALETTE UPLOADER (IMAGE OR .GPL PALETTE FILES)
+// =============================================================================
+function parseGPLContent(text) {
+  const lines = text.split(/\r?\n/);
+  let name = "";
+  const colors = [];
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    if (line.toLowerCase().startsWith('name:')) {
+      name = line.substring(5).trim();
+      continue;
+    }
+    if (line.startsWith('#') || line.toLowerCase().startsWith('gimp palette') || line.toLowerCase().startsWith('columns:')) {
+      continue;
+    }
+    const match = line.match(/^(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})/);
+    if (match) {
+      const r = Math.min(255, Math.max(0, parseInt(match[1], 10)));
+      const g = Math.min(255, Math.max(0, parseInt(match[2], 10)));
+      const b = Math.min(255, Math.max(0, parseInt(match[3], 10)));
+      colors.push([r, g, b]);
+    }
+  }
+
+  return { name, colors };
+}
+
 paletteFileInput.addEventListener('change', (e) => {
   if (e.target.files && e.target.files[0]) {
-    loadPaletteReferenceImage(e.target.files[0]);
+    loadPaletteReference(e.target.files[0]);
   }
 });
 
-function loadPaletteReferenceImage(file) {
+function loadPaletteReference(file) {
+  const isGpl = file.name.toLowerCase().endsWith('.gpl');
+
+  if (isGpl) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      const parsed = parseGPLContent(text);
+      if (!parsed.colors || parsed.colors.length === 0) {
+        alert("No valid RGB colors found in the selected .gpl file.");
+        return;
+      }
+
+      const colors = parsed.colors;
+      const palName = parsed.name || file.name.replace(/\.[^/.]+$/, "");
+      paletteRefName = palName;
+      paletteRefPixels = colors;
+      PALETTES['reference'] = colors.map(c => [...c]);
+
+      // Create a 32x32 color tile grid thumbnail for the badge
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = 32;
+      thumbCanvas.height = 32;
+      const tCtx = thumbCanvas.getContext('2d');
+      const cols = Math.ceil(Math.sqrt(colors.length));
+      const cellW = 32 / cols;
+      colors.forEach((c, i) => {
+        const cx = (i % cols) * cellW;
+        const cy = Math.floor(i / cols) * cellW;
+        tCtx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+        tCtx.fillRect(cx, cy, cellW, cellW);
+      });
+      const thumbUrl = thumbCanvas.toDataURL('image/png');
+
+      paletteRefThumb.src = thumbUrl;
+      paletteRefNameEl.textContent = `${palName} (${colors.length}c)`;
+      paletteRefBadge.style.display = 'flex';
+
+      if (unfakePaletteRefThumb) unfakePaletteRefThumb.src = thumbUrl;
+      if (unfakePaletteRefName) unfakePaletteRefName.textContent = `${palName} (${colors.length}c)`;
+      if (unfakePaletteRefBadge) unfakePaletteRefBadge.style.display = 'flex';
+
+      [paletteSelect, unfakePaletteSelect].forEach(sel => {
+        if (!sel) return;
+        let refOpt = sel.querySelector('option[value="reference"]');
+        if (!refOpt) {
+          refOpt = document.createElement('option');
+          refOpt.value = 'reference';
+          sel.insertBefore(refOpt, sel.firstChild);
+        }
+        refOpt.textContent = `★ GPL: ${palName} (${colors.length} Colors)`;
+        sel.value = 'reference';
+      });
+
+      updatePalettePreview();
+      triggerPreviewDebounced();
+
+      // If palette editor is currently open, load these colors immediately:
+      if (isEyedropperActive) {
+        pickedEyedropperColors = colors.map(c => [...c]);
+        updateEyedropperUI();
+        if (toggleLivePalette && toggleLivePalette.checked) {
+          applyLiveCustomPalette();
+        }
+      }
+    };
+    reader.readAsText(file);
+    return;
+  }
+
+  // Load as image
   paletteRefName = file.name;
   const reader = new FileReader();
   reader.onload = (ev) => {
@@ -881,6 +994,8 @@ function loadPaletteReferenceImage(file) {
       }
 
       paletteRefPixels = pixels;
+      const k = parseInt(currentEngine === 'unfake' ? unfakeMaxColors.value : colorCount.value) || 16;
+      PALETTES['reference'] = runKMeans(pixels, k, 15);
 
       paletteRefThumb.src = ev.target.result;
       paletteRefNameEl.textContent = paletteRefName;
@@ -904,6 +1019,15 @@ function loadPaletteReferenceImage(file) {
 
       updatePalettePreview();
       triggerPreviewDebounced();
+
+      // If palette editor is currently open, load these colors immediately:
+      if (isEyedropperActive) {
+        pickedEyedropperColors = PALETTES['reference'].map(c => [...c]);
+        updateEyedropperUI();
+        if (toggleLivePalette && toggleLivePalette.checked) {
+          applyLiveCustomPalette();
+        }
+      }
     };
     img.src = ev.target.result;
   };
@@ -914,6 +1038,7 @@ function loadPaletteReferenceImage(file) {
 function clearPaletteReference() {
   paletteRefPixels = null;
   paletteRefName = "";
+  delete PALETTES['reference'];
   paletteFileInput.value = '';
 
   if (paletteRefBadge) paletteRefBadge.style.display = 'none';
@@ -946,12 +1071,18 @@ function updatePalettePreview() {
   const pChoice = currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value;
   [palettePreview, unfakePalettePreview].forEach(p => { if (p) p.innerHTML = ''; });
 
-  if (pChoice === 'reference' && paletteRefPixels && paletteRefPixels.length > 0) {
-    const kColors = currentEngine === 'unfake' ? (parseInt(unfakeMaxColors.value) || 32) : (parseInt(colorCount.value) || 16);
-    const iters = Math.min(10, parseInt(kmeansIter.value) || 10);
-    const extracted = runKMeans(paletteRefPixels, kColors, iters);
-    renderSwatches(extracted);
-    return;
+  if (pChoice === 'reference') {
+    if (PALETTES['reference'] && PALETTES['reference'].length > 0) {
+      renderSwatches(PALETTES['reference']);
+      return;
+    }
+    if (paletteRefPixels && paletteRefPixels.length > 0) {
+      const kColors = currentEngine === 'unfake' ? (parseInt(unfakeMaxColors.value) || 32) : (parseInt(colorCount.value) || 16);
+      const iters = Math.min(10, parseInt(kmeansIter.value) || 10);
+      const extracted = runKMeans(paletteRefPixels, kColors, iters);
+      renderSwatches(extracted);
+      return;
+    }
   }
 
   const preset = PALETTES[pChoice];
@@ -1069,7 +1200,12 @@ dropZone.addEventListener('drop', (e) => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
   if (e.dataTransfer.files.length > 0) {
-    handleFiles(e.dataTransfer.files);
+    const firstFile = e.dataTransfer.files[0];
+    if (firstFile.name.toLowerCase().endsWith('.gpl')) {
+      loadPaletteReference(firstFile);
+    } else {
+      handleFiles(e.dataTransfer.files);
+    }
   }
 });
 
@@ -1079,23 +1215,132 @@ fileInput.addEventListener('change', (e) => {
   }
 });
 
-function handleFiles(files) {
-  if (files.length === 1) {
-    loadImage(files[0]);
+if (batchAddFileInput) {
+  batchAddFileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files);
+      newFiles.forEach(nf => {
+        if (!batchFiles.some(bf => bf.name === nf.name && bf.size === nf.size)) {
+          batchFiles.push(nf);
+        }
+      });
+      updateBatchList();
+      if (!rawImageElement && batchFiles.length > 0) {
+        loadBatchImage(0, false);
+      } else {
+        updateBatchNavUI();
+      }
+    }
+  });
+}
+
+[btnAddBatchFiles1, btnAddBatchFiles2].forEach(btn => {
+  if (btn) btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (batchAddFileInput) {
+      batchAddFileInput.value = '';
+      batchAddFileInput.click();
+    }
+  });
+});
+
+[btnClearBatch1, btnClearBatch2].forEach(btn => {
+  if (btn) btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clearBatchQueue();
+  });
+});
+
+function clearBatchQueue() {
+  if (rawImageElement && batchFiles[currentBatchIndex]) {
+    batchFiles = [batchFiles[currentBatchIndex]];
+    currentBatchIndex = 0;
   } else {
-    batchFiles = Array.from(files);
+    batchFiles = [];
+    currentBatchIndex = 0;
+  }
+  updateBatchList();
+  updateBatchNavUI();
+}
+
+function handleFiles(files) {
+  const fileArr = Array.from(files);
+  if (fileArr.length === 1 && batchFiles.length === 0) {
+    batchFiles = [fileArr[0]];
+    currentBatchIndex = 0;
     updateBatchList();
-    loadImage(files[0]);
+    loadBatchImage(0, false);
+  } else if (fileArr.length === 1 && batchFiles.length > 0) {
+    const existingIdx = batchFiles.findIndex(f => f.name === fileArr[0].name);
+    if (existingIdx >= 0) {
+      switchBatchImage(existingIdx);
+    } else {
+      batchFiles.push(fileArr[0]);
+      currentBatchIndex = batchFiles.length - 1;
+      updateBatchList();
+      loadBatchImage(currentBatchIndex, true);
+    }
+  } else {
+    batchFiles = fileArr;
+    currentBatchIndex = 0;
+    updateBatchList();
+    loadBatchImage(0, false);
   }
 }
+
+async function loadBatchImage(idx, preserveZoom = true) {
+  if (idx < 0 || idx >= batchFiles.length) return;
+  currentBatchIndex = idx;
+  const file = batchFiles[idx];
+  await loadImage(file, preserveZoom);
+  updateBatchNavUI();
+}
+
+function switchBatchImage(idx) {
+  if (idx < 0 || idx >= batchFiles.length) return;
+  loadBatchImage(idx, true);
+}
+
+function stepBatch(delta) {
+  if (batchFiles.length <= 1) return;
+  let nextIdx = (currentBatchIndex + delta) % batchFiles.length;
+  if (nextIdx < 0) nextIdx += batchFiles.length;
+  switchBatchImage(nextIdx);
+}
+
+if (btnBatchPrev) btnBatchPrev.addEventListener('click', () => stepBatch(-1));
+if (btnBatchNext) btnBatchNext.addEventListener('click', () => stepBatch(1));
+if (batchSelectDropdown) {
+  batchSelectDropdown.addEventListener('change', () => {
+    const idx = parseInt(batchSelectDropdown.value) || 0;
+    switchBatchImage(idx);
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+  if (!batchFiles || batchFiles.length <= 1) return;
+  if (e.key === '[' || (e.altKey && e.key === 'ArrowLeft')) {
+    e.preventDefault();
+    stepBatch(-1);
+  } else if (e.key === ']' || (e.altKey && e.key === 'ArrowRight')) {
+    e.preventDefault();
+    stepBatch(1);
+  }
+});
 
 function updateBatchList() {
   const lists = [document.getElementById('batchList'), unfakeBatchList];
   const counts = [document.getElementById('batchCount'), unfakeBatchCount];
   const buttons = [document.getElementById('btnProcessBatch'), btnUnfakeProcessBatch];
+  const drawers = [document.getElementById('batchDrawer'), unfakeBatchDrawer];
 
   counts.forEach(c => { if (c) c.textContent = batchFiles.length; });
   buttons.forEach(b => { if (b) b.disabled = batchFiles.length === 0; });
+
+  if (batchFiles.length > 1) {
+    drawers.forEach(d => { if (d) d.open = true; });
+  }
 
   lists.forEach(list => {
     if (!list) return;
@@ -1106,10 +1351,70 @@ function updateBatchList() {
     }
     batchFiles.forEach((f, idx) => {
       const li = document.createElement('li');
-      li.textContent = `${idx + 1}. ${f.name} (${Math.round(f.size/1024)} KB)`;
+      li.className = `batch-item ${idx === currentBatchIndex ? 'active' : ''}`;
+      li.dataset.index = idx;
+      li.title = `Click to preview ${f.name} in workbench with current palette`;
+      
+      const infoSpan = document.createElement('span');
+      infoSpan.className = 'batch-item-info';
+      infoSpan.innerHTML = `<span class="batch-item-num">${idx + 1}.</span> <span class="batch-item-name">${f.name}</span> <span class="batch-item-size">(${Math.round(f.size/1024)} KB)</span>`;
+      
+      const actSpan = document.createElement('span');
+      actSpan.className = 'batch-item-tag';
+      actSpan.textContent = idx === currentBatchIndex ? '● PREVIEWING' : 'VIEW';
+
+      li.appendChild(infoSpan);
+      li.appendChild(actSpan);
+
+      li.addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchBatchImage(idx);
+      });
+
       list.appendChild(li);
     });
   });
+
+  updateBatchNavUI();
+}
+
+function updateBatchNavUI() {
+  if (!batchNavToolbar) return;
+  if (batchFiles.length > 1) {
+    batchNavToolbar.style.display = 'flex';
+    if (batchNavBadge) batchNavBadge.textContent = `${currentBatchIndex + 1} / ${batchFiles.length}`;
+
+    if (batchSelectDropdown) {
+      batchSelectDropdown.innerHTML = '';
+      batchFiles.forEach((f, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `${idx + 1}. ${f.name}`;
+        if (idx === currentBatchIndex) opt.selected = true;
+        batchSelectDropdown.appendChild(opt);
+      });
+    }
+
+    const lists = [document.getElementById('batchList'), unfakeBatchList];
+    lists.forEach(list => {
+      if (!list) return;
+      Array.from(list.children).forEach((li, idx) => {
+        if (li.classList.contains('batch-item')) {
+          if (idx === currentBatchIndex) {
+            li.classList.add('active');
+            const tag = li.querySelector('.batch-item-tag');
+            if (tag) tag.textContent = '● PREVIEWING';
+          } else {
+            li.classList.remove('active');
+            const tag = li.querySelector('.batch-item-tag');
+            if (tag) tag.textContent = 'VIEW';
+          }
+        }
+      });
+    });
+  } else {
+    batchNavToolbar.style.display = 'none';
+  }
 }
 
 // INTELLIGENT SCALE DETECTION (UNFAKE.JS ENGINE INTEGRATION)
@@ -1170,54 +1475,62 @@ async function runScaleDetection() {
 }
 
 // LOAD IMAGE INTO WORKBENCH
-function loadImage(file) {
-  loadedFilename = file.name;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const img = new Image();
-    img.onload = async () => {
-      rawImageElement = img;
-      const w = img.naturalWidth || img.width;
-      const h = img.naturalHeight || img.height;
-      const maxDim = Math.max(w, h);
+function loadImage(file, preserveZoom = false) {
+  return new Promise((resolve) => {
+    loadedFilename = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = async () => {
+        rawImageElement = img;
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        const maxDim = Math.max(w, h);
 
-      rawOffCanvas.width = w;
-      rawOffCanvas.height = h;
-      rawOffCtx.clearRect(0, 0, w, h);
-      rawOffCtx.drawImage(img, 0, 0);
+        rawOffCanvas.width = w;
+        rawOffCanvas.height = h;
+        rawOffCtx.clearRect(0, 0, w, h);
+        rawOffCtx.drawImage(img, 0, 0);
 
-      loadedFilenameEl.textContent = loadedFilename;
-      origDimBadge.textContent = `${w}x${h} px`;
-      
-      dropPrompt.style.display = 'none';
-      viewerToolbar.style.display = 'flex';
-      canvasWrapper.style.display = 'flex';
+        loadedFilenameEl.textContent = loadedFilename;
+        origDimBadge.textContent = `${w}x${h} px`;
+        
+        dropPrompt.style.display = 'none';
+        viewerToolbar.style.display = 'flex';
+        canvasWrapper.style.display = 'flex';
 
-      // Always perform intelligent scale detection if in AUTO downscale mode
-      if (currentDivisor === 'auto') {
-        await runScaleDetection();
-      }
-      selectDivisor(currentDivisor !== undefined ? currentDivisor : 1);
-      updateDimensionsUI();
-
-      setTimeout(() => {
-        const scrollerW = viewportScroller.clientWidth - 30;
-        const scrollerH = viewportScroller.clientHeight - 30;
-        if (w > scrollerW || h > scrollerH) {
-          fitZoomToContainer();
-        } else if (maxDim <= 128) {
-          setZoom(400);
-        } else if (maxDim <= 256) {
-          setZoom(200);
-        } else {
-          setZoom(100);
+        // Always perform intelligent scale detection if in AUTO downscale mode
+        if (currentDivisor === 'auto') {
+          await runScaleDetection();
         }
-        triggerPreviewDebounced();
-      }, 20);
+        selectDivisor(currentDivisor !== undefined ? currentDivisor : 1);
+        updateDimensionsUI();
+        updateBatchNavUI();
+
+        setTimeout(() => {
+          if (!preserveZoom) {
+            const scrollerW = viewportScroller.clientWidth - 30;
+            const scrollerH = viewportScroller.clientHeight - 30;
+            if (w > scrollerW || h > scrollerH) {
+              fitZoomToContainer();
+            } else if (maxDim <= 128) {
+              setZoom(400);
+            } else if (maxDim <= 256) {
+              setZoom(200);
+            } else {
+              setZoom(100);
+            }
+          } else {
+            setZoom(zoomPercent);
+          }
+          triggerPreviewDebounced();
+          resolve();
+        }, 20);
+      };
+      img.src = e.target.result;
     };
-    img.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
 }
 
 function updateDimensionsUI() {
@@ -1244,8 +1557,7 @@ function updateDimensionsUI() {
   snappedRes.textContent = `${targetW}x${targetH}`;
 
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
-  const suffix = currentEngine === 'unfake' ? `_unfake${targetW}` : `_sn${targetW}`;
-  const downloadName = `${baseName}${suffix}.png`;
+  const downloadName = loadedFilename.toLowerCase().endsWith('.png') ? loadedFilename : `${baseName}.png`;
   downloadNameLabel.textContent = `(${downloadName})`;
   if (unfakeDownloadNameLabel) unfakeDownloadNameLabel.textContent = `(${downloadName})`;
   btnDownload.disabled = false;
@@ -1260,6 +1572,10 @@ btnCloseImage.addEventListener('click', () => {
   stopEyedropper();
 
   viewerToolbar.style.display = 'none';
+  if (batchNavToolbar) batchNavToolbar.style.display = 'none';
+  batchFiles = [];
+  currentBatchIndex = 0;
+  updateBatchList();
   canvasWrapper.style.display = 'none';
   dropPrompt.style.display = 'block';
 
@@ -1314,9 +1630,13 @@ async function updatePreviewAsync() {
 
       const pChoice = unfakePaletteSelect.value;
       let activePalette = null;
-      if (pChoice === 'reference' && paletteRefPixels && paletteRefPixels.length > 0) {
-        const kColors = parseInt(unfakeMaxColors.value) || 32;
-        activePalette = runKMeans(paletteRefPixels, kColors, 15);
+      if (pChoice === 'reference') {
+        if (PALETTES['reference'] && PALETTES['reference'].length > 0) {
+          activePalette = PALETTES['reference'];
+        } else if (paletteRefPixels && paletteRefPixels.length > 0) {
+          const kColors = parseInt(unfakeMaxColors.value) || 32;
+          activePalette = runKMeans(paletteRefPixels, kColors, 15);
+        }
       } else if (PALETTES[pChoice]) {
         activePalette = PALETTES[pChoice];
       }
@@ -1370,8 +1690,12 @@ async function updatePreviewAsync() {
     let palette = null;
     const pChoice = paletteSelect.value;
 
-    if (pChoice === 'reference' && paletteRefPixels && paletteRefPixels.length > 0) {
-      palette = runKMeans(paletteRefPixels, kColors, iterations);
+    if (pChoice === 'reference') {
+      if (PALETTES['reference'] && PALETTES['reference'].length > 0) {
+        palette = PALETTES['reference'];
+      } else if (paletteRefPixels && paletteRefPixels.length > 0) {
+        palette = runKMeans(paletteRefPixels, kColors, iterations);
+      }
     } else if (PALETTES[pChoice]) {
       palette = PALETTES[pChoice];
     } else {
@@ -1748,15 +2072,98 @@ function updateSplitFromMouse(e) {
 }
 
 // EYEDROPPER PALETTE BUILDER & LIVE PREVIEW IMPLEMENTATION
-function startEyedropper() {
-  if (!rawImageElement) return;
+// =============================================================================
+// ACTIVE PALETTE COLOR EXTRACTOR & EDITOR (EDIT ACTIVE PALETTE INSTEAD OF BLANK)
+// =============================================================================
+function getActivePaletteColors() {
+  const pChoice = (currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value) || 'auto';
+
+  // If already in custom eyedropper with colors
+  if (pChoice === 'customEyedropper' && pickedEyedropperColors && pickedEyedropperColors.length > 0) {
+    return pickedEyedropperColors.map(c => [...c]);
+  }
+
+  // If reference / GPL palette
+  if (pChoice === 'reference') {
+    if (PALETTES['reference'] && PALETTES['reference'].length > 0) {
+      return PALETTES['reference'].map(c => [...c]);
+    }
+    if (paletteRefPixels && paletteRefPixels.length > 0) {
+      const k = parseInt(currentEngine === 'unfake' ? unfakeMaxColors.value : colorCount.value) || 16;
+      return runKMeans(paletteRefPixels, k, 15);
+    }
+  }
+
+  // If preset dropdown selection
+  if (PALETTES[pChoice] && PALETTES[pChoice].length > 0) {
+    return PALETTES[pChoice].map(c => [...c]);
+  }
+
+  // If auto k-means palette was already generated on active image
+  if (currentActivePalette && currentActivePalette.length > 0) {
+    return currentActivePalette.map(c => [...c]);
+  }
+
+  // Fallback: extract from raw image
+  if (rawOffCtx && rawImageElement) {
+    const w = rawImageElement.naturalWidth || rawImageElement.width;
+    const h = rawImageElement.naturalHeight || rawImageElement.height;
+    const imgData = rawOffCtx.getImageData(0, 0, w, h).data;
+    const px = [];
+    const step = Math.max(1, Math.floor((w * h) / 4000));
+    for (let i = 0; i < imgData.length; i += 4 * step) {
+      if (imgData[i + 3] > 64) px.push([imgData[i], imgData[i + 1], imgData[i + 2]]);
+    }
+    if (px.length > 0) {
+      const k = parseInt(colorCount.value) || 16;
+      return runKMeans(px, k, 15);
+    }
+  }
+
+  return PALETTES.cyberpunk16.map(c => [...c]);
+}
+
+// PALETTE EDITOR & LIVE PREVIEW IMPLEMENTATION
+function startPaletteEditor() {
+  if (!rawImageElement) {
+    fileInput.click();
+    return;
+  }
   isEyedropperActive = true;
   eyedropperHud.style.display = 'flex';
-  btnStartEyedropper.classList.add('btn-eyedropper-active');
-  btnStartEyedropper.innerHTML = '&#128394; PICKING... (CLICK IMAGE)';
+
+  [btnStartEyedropper, btnUnfakeStartEyedropper].forEach(b => {
+    if (b) {
+      b.classList.add('btn-eyedropper-active');
+      b.innerHTML = '&#9998; EDITING PALETTE...';
+    }
+  });
+
   mainCanvas.style.cursor = 'crosshair';
   canvasScaler.style.cursor = 'crosshair';
   canvasWrapper.style.cursor = 'crosshair';
+
+  // Always load the colors from the currently active palette
+  const currentChoice = (currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value) || 'auto';
+  if (currentChoice !== 'customEyedropper' || pickedEyedropperColors.length === 0) {
+    const activeColors = getActivePaletteColors();
+    pickedEyedropperColors = activeColors.map(c => [...c]);
+
+    if (savePaletteName) {
+      if (currentChoice === 'reference' && paletteRefName) {
+        savePaletteName.value = `${paletteRefName.replace(/\.[^/.]+$/, "")} (Edited)`;
+      } else if (currentChoice !== 'auto' && currentChoice !== 'customEyedropper') {
+        savePaletteName.value = `${currentChoice.toUpperCase()} (Edited)`;
+      } else {
+        savePaletteName.value = "Custom Palette";
+      }
+    }
+  }
+
+  if (toggleLivePalette) {
+    toggleLivePalette.checked = true;
+  }
+  applyLiveCustomPalette();
   updateEyedropperUI();
 }
 
@@ -1764,8 +2171,14 @@ function stopEyedropper() {
   isEyedropperActive = false;
   eyedropperHud.style.display = 'none';
   eyedropperLoupe.style.display = 'none';
-  btnStartEyedropper.classList.remove('btn-eyedropper-active');
-  btnStartEyedropper.innerHTML = '&#128394; + ADD PALETTE (EYEDROPPER)';
+
+  [btnStartEyedropper, btnUnfakeStartEyedropper].forEach(b => {
+    if (b) {
+      b.classList.remove('btn-eyedropper-active');
+      b.innerHTML = '&#9998; EDIT ACTIVE PALETTE';
+    }
+  });
+
   mainCanvas.style.cursor = '';
   canvasScaler.style.cursor = '';
   canvasWrapper.style.cursor = '';
@@ -1878,17 +2291,34 @@ if (toggleLivePalette) {
   });
 }
 
-btnStartEyedropper.addEventListener('click', () => {
-  if (!rawImageElement) {
-    fileInput.click();
-    return;
-  }
-  if (isEyedropperActive) {
-    stopEyedropper();
-  } else {
-    startEyedropper();
+[btnStartEyedropper, btnUnfakeStartEyedropper].forEach(btn => {
+  if (btn) {
+    btn.addEventListener('click', () => {
+      if (!rawImageElement) {
+        fileInput.click();
+        return;
+      }
+      if (isEyedropperActive) {
+        stopEyedropper();
+      } else {
+        startPaletteEditor();
+      }
+    });
   }
 });
+
+if (btnEyedropperReload) {
+  btnEyedropperReload.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const activeColors = getActivePaletteColors();
+    pickedEyedropperColors = activeColors.map(c => [...c]);
+    updateEyedropperUI();
+    if (toggleLivePalette && toggleLivePalette.checked) {
+      applyLiveCustomPalette();
+    }
+    showEyedropperHint("↺ Reloaded original palette colors!");
+  });
+}
 
 btnEyedropperCancel.addEventListener('click', () => stopEyedropper());
 
@@ -3266,8 +3696,7 @@ async function downloadAsset() {
   const targetW = currentSnappedCanvas.width;
   const targetH = currentSnappedCanvas.height;
   const baseName = loadedFilename.replace(/\.[^/.]+$/, "");
-  const suffix = currentEngine === 'unfake' ? `_unfake${targetW}` : `_sn${targetW}`;
-  const finalFilename = `${baseName}${suffix}.png`;
+  const finalFilename = loadedFilename.toLowerCase().endsWith('.png') ? loadedFilename : `${baseName}.png`;
 
   try {
     const offCtx = currentSnappedCanvas.getContext('2d');
@@ -3310,8 +3739,12 @@ async function processBatch() {
   const buttons = [document.getElementById('btnProcessBatch'), btnUnfakeProcessBatch];
   buttons.forEach(b => { if (b) { b.disabled = true; b.textContent = "Processing Batch..."; } });
 
+  const origSelectedIdx = currentBatchIndex;
+
   for (let i = 0; i < batchFiles.length; i++) {
     const file = batchFiles[i];
+    buttons.forEach(b => { if (b) b.textContent = `Processing ${i + 1}/${batchFiles.length}...`; });
+
     await new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -3331,6 +3764,7 @@ async function processBatch() {
           }
           await updatePreviewAsync();
           await downloadAsset();
+          await new Promise(r => setTimeout(r, 220));
           resolve();
         };
         img.src = e.target.result;
@@ -3339,7 +3773,18 @@ async function processBatch() {
     });
   }
 
-  buttons.forEach(b => { if (b) { b.disabled = false; b.textContent = "BATCH PROCESS ALL"; } });
+  // Restore active viewed frame
+  if (batchFiles[origSelectedIdx]) {
+    await loadBatchImage(origSelectedIdx, true);
+  }
+
+  buttons.forEach(b => {
+    if (b) {
+      b.disabled = false;
+      b.textContent = `✓ DONE (${batchFiles.length} FILES)`;
+      setTimeout(() => { b.textContent = "BATCH PROCESS ALL"; }, 3000);
+    }
+  });
 }
 
 const batchBtn = document.getElementById('btnProcessBatch');
