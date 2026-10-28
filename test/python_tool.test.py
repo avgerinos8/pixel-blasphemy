@@ -4,13 +4,13 @@ from PIL import Image
 import os
 import sys
 
-# Import pixel_snapper
-sys.path.insert(0, os.path.abspath('tools'))
+# Import pixel_snapper from tools/
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import pixel_snapper
 
 class TestPixelSnapper(unittest.TestCase):
     def test_parse_palette_hex_6_and_3_digits(self):
-        # 6-digit and 3-digit hex parsing
         hex_str = "#ff0000, #0f0, 0000ff, #123, fff"
         colors = pixel_snapper.parse_palette_hex(hex_str)
         self.assertIsNotNone(colors)
@@ -22,7 +22,6 @@ class TestPixelSnapper(unittest.TestCase):
         np.testing.assert_array_equal(colors[4], [255, 255, 255])
 
     def test_quantize_kmeans_basic(self):
-        # Create 16x16 test image with 4 clear color quadrants
         img = np.zeros((16, 16, 3), dtype=np.uint8)
         img[:8, :8] = [255, 0, 0]      # Red
         img[:8, 8:] = [0, 255, 0]      # Green
@@ -42,7 +41,6 @@ class TestPixelSnapper(unittest.TestCase):
         np.testing.assert_array_equal(mapped[0, 1], [255, 255, 255])
 
     def test_snap_image_pipeline(self):
-        # Create 64x64 RGBA image
         img = Image.new('RGBA', (64, 64), (100, 150, 200, 255))
         snapped = pixel_snapper.snap_image(img, k_colors=8, target_grid=32)
         self.assertEqual(snapped.size, (32, 32))

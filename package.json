@@ -4,7 +4,8 @@
   "description": "Zero-Mixels AI Pixel Art Pipeline & Studio",
   "scripts": {
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test/run_all.js"
   },
   "keywords": [
     "pixel-art",
