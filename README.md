@@ -2,6 +2,10 @@
 
 Retro Pixel Art Snapper & Mastering Studio
 
+<p align="center">
+    <img src="icon.png" alt="logo" height="256px" width="256px" />
+</p>
+
 # [LAUNCH STUDIO](https://avgerinos8.github.io/pixel-blasphemy/)
 
 **Live Web Application:**  
