@@ -573,68 +573,30 @@ syncSliderAndNum(edgeSensitivity, edgeSensitivityNum, () => triggerPreviewDeboun
 
 let previousColorCount = parseInt(colorCount.value) || 16;
 let previousUnfakeMaxColors = parseInt(unfakeMaxColors.value) || 32;
-let isKMeansIterRefineActive = false;
 
-function hasActiveCustomPalette() {
-  const pChoice = currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value;
-  return (
-    pChoice === 'customEyedropper' ||
-    (PALETTES.customEyedropper && PALETTES.customEyedropper.length > 0) ||
-    (isEyedropperActive && pickedEyedropperColors && pickedEyedropperColors.length > 0)
-  );
-}
-
-async function handleColorBudgetChange(newVal, isUnfake = false) {
-  const prevVal = isUnfake ? previousUnfakeMaxColors : previousColorCount;
-  if (newVal === prevVal) return;
-
-  if (hasActiveCustomPalette()) {
-    const confirmed = await showConfirmModal({
-      title: 'RESET CUSTOM PALETTE?',
-      message: `You currently have an active custom palette. Changing Color Budget to ${newVal} will clear your custom palette edits and generate a fresh Auto K-Means palette from the active image.`,
-      details: `Custom colors will be replaced with ${newVal} auto-calculated colors.`,
-      confirmText: 'RESET PALETTE',
-      cancelText: 'KEEP CUSTOM',
-      danger: true
-    });
-
-    if (!confirmed) {
-      if (isUnfake) {
-        unfakeMaxColors.value = previousUnfakeMaxColors;
-        unfakeMaxColorsNum.value = previousUnfakeMaxColors;
-      } else {
-        colorCount.value = previousColorCount;
-        colorCountNum.value = previousColorCount;
-      }
-      return;
-    }
-  }
-
+function handleColorBudgetChange(newVal, isUnfake = false) {
   if (isUnfake) {
     previousUnfakeMaxColors = newVal;
   } else {
     previousColorCount = newVal;
   }
 
-  [paletteSelect, unfakePaletteSelect].forEach(sel => {
-    if (!sel) return;
-    const opt = sel.querySelector('option[value="customEyedropper"]');
-    if (opt) opt.remove();
-    sel.value = 'auto';
-  });
-  if (PALETTES.customEyedropper) delete PALETTES.customEyedropper;
-  if (toggleLivePalette) toggleLivePalette.checked = false;
-  currentActivePalette = null;
-  pickedEyedropperColors = [];
-  updatePalettePreview();
-  triggerPreviewDebounced();
+  const pChoice = currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value;
+  // User directive: NEVER reset, delete or wipe custom palettes when changing the color budget.
+  // ONLY recalculate and run K-Means if the palette source is currently explicitly 'auto'!
+  if (pChoice === 'auto') {
+    currentActivePalette = null;
+    updatePalettePreview();
+    triggerPreviewDebounced();
+  }
 }
 
 function handleKMeansIterChange() {
-  // Do NOT clear or reset the palette!
-  // Instead, activate refinement pass using existing colors as initial centroids
-  isKMeansIterRefineActive = true;
-  triggerPreviewDebounced();
+  const pChoice = currentEngine === 'unfake' ? unfakePaletteSelect.value : paletteSelect.value;
+  if (pChoice === 'auto') {
+    currentActivePalette = null;
+    triggerPreviewDebounced();
+  }
 }
 
 syncSliderAndNum(colorCount, colorCountNum, (val) => handleColorBudgetChange(parseInt(val) || 16, false));
@@ -1339,26 +1301,33 @@ function loadPaletteReference(file) {
   reader.onload = (ev) => {
     const img = new Image();
     img.onload = () => {
-      const maxDim = Math.max(img.width, img.height);
-      const scale = Math.min(1, 192 / maxDim);
-      const pw = Math.max(1, Math.round(img.width * scale));
-      const ph = Math.max(1, Math.round(img.height * scale));
+      // 1. First sample unscaled image without smoothing to find authentic unique colors
+      const fullCanvas = document.createElement('canvas');
+      const fw = img.naturalWidth || img.width;
+      const fh = img.naturalHeight || img.height;
+      fullCanvas.width = fw;
+      fullCanvas.height = fh;
+      const fCtx = fullCanvas.getContext('2d');
+      fCtx.imageSmoothingEnabled = false;
+      fCtx.drawImage(img, 0, 0);
 
-      const pCanvas = document.createElement('canvas');
-      pCanvas.width = pw;
-      pCanvas.height = ph;
-      const pCtx = pCanvas.getContext('2d');
-      pCtx.drawImage(img, 0, 0, pw, ph);
+      const fData = fCtx.getImageData(0, 0, fw, fh).data;
+      const uniqueColorsMap = new Map();
+      const allOpaquePixels = [];
 
-      const pData = pCtx.getImageData(0, 0, pw, ph).data;
-      const pixels = [];
-      for (let i = 0; i < pData.length; i += 4) {
-        if (pData[i + 3] > 32) {
-          pixels.push([pData[i], pData[i + 1], pData[i + 2]]);
+      for (let i = 0; i < fData.length; i += 4) {
+        if (fData[i + 3] > 32) {
+          const r = fData[i], g = fData[i + 1], b = fData[i + 2];
+          const rgb = [r, g, b];
+          allOpaquePixels.push(rgb);
+          const key = (r << 16) | (g << 8) | b;
+          if (!uniqueColorsMap.has(key)) {
+            uniqueColorsMap.set(key, rgb);
+          }
         }
       }
 
-      if (pixels.length === 0) {
+      if (uniqueColorsMap.size === 0) {
         showAlertModal({
           title: 'TRANSPARENT PALETTE',
           message: 'The uploaded palette image appears to be completely transparent.',
@@ -1367,16 +1336,26 @@ function loadPaletteReference(file) {
         return;
       }
 
-      paletteRefPixels = pixels;
-      const k = parseInt(currentEngine === 'unfake' ? unfakeMaxColors.value : colorCount.value) || 16;
-      PALETTES['reference'] = runKMeans(pixels, k, 15);
+      let extractedColors = [];
+      if (uniqueColorsMap.size <= 256) {
+        // Image is already an authentic custom palette or swatch strip (<= 256 unique colors)!
+        // Preserve exact colors 100% faithfully without running K-Means!
+        extractedColors = Array.from(uniqueColorsMap.values());
+      } else {
+        // Photograph or complex artwork with thousands of shades: extract dominant colors via K-Means
+        const k = parseInt(currentEngine === 'unfake' ? unfakeMaxColors.value : colorCount.value) || 16;
+        extractedColors = runKMeans(allOpaquePixels, k, 15);
+      }
+
+      paletteRefPixels = extractedColors.map(c => [...c]);
+      PALETTES['reference'] = extractedColors.map(c => [...c]);
 
       paletteRefThumb.src = ev.target.result;
-      paletteRefNameEl.textContent = paletteRefName;
+      paletteRefNameEl.textContent = `${paletteRefName} (${extractedColors.length}c)`;
       paletteRefBadge.style.display = 'flex';
 
       if (unfakePaletteRefThumb) unfakePaletteRefThumb.src = ev.target.result;
-      if (unfakePaletteRefName) unfakePaletteRefName.textContent = paletteRefName;
+      if (unfakePaletteRefName) unfakePaletteRefName.textContent = `${paletteRefName} (${extractedColors.length}c)`;
       if (unfakePaletteRefBadge) unfakePaletteRefBadge.style.display = 'flex';
 
       [paletteSelect, unfakePaletteSelect].forEach(sel => {
@@ -1387,7 +1366,7 @@ function loadPaletteReference(file) {
           refOpt.value = 'reference';
           sel.insertBefore(refOpt, sel.firstChild);
         }
-        refOpt.textContent = `★ Ref Image: ${paletteRefName} (K-Means)`;
+        refOpt.textContent = `★ Ref: ${paletteRefName} (${extractedColors.length} Colors)`;
         sel.value = 'reference';
       });
 
@@ -1396,7 +1375,7 @@ function loadPaletteReference(file) {
 
       // If palette editor is currently open, load these colors immediately:
       if (isEyedropperActive) {
-        pickedEyedropperColors = PALETTES['reference'].map(c => [...c]);
+        pickedEyedropperColors = extractedColors.map(c => [...c]);
         updateEyedropperUI();
         if (toggleLivePalette && toggleLivePalette.checked) {
           applyLiveCustomPalette();
@@ -1486,12 +1465,18 @@ function renderSwatches(colorList) {
 
 paletteSelect.addEventListener('change', () => {
   if (unfakePaletteSelect) unfakePaletteSelect.value = paletteSelect.value;
+  if (paletteSelect.value === 'auto') {
+    currentActivePalette = null; // Fresh Auto K-Means only when explicitly selecting auto
+  }
   updatePalettePreview();
   triggerPreviewDebounced();
 });
 if (unfakePaletteSelect) {
   unfakePaletteSelect.addEventListener('change', () => {
     paletteSelect.value = unfakePaletteSelect.value;
+    if (unfakePaletteSelect.value === 'auto') {
+      currentActivePalette = null;
+    }
     updatePalettePreview();
     triggerPreviewDebounced();
   });
@@ -2173,50 +2158,14 @@ async function updatePreviewAsync() {
       if (PALETTES['reference'] && PALETTES['reference'].length > 0) {
         palette = PALETTES['reference'];
       } else if (paletteRefPixels && paletteRefPixels.length > 0) {
-        const initCentroids = (isKMeansIterRefineActive && currentActivePalette && currentActivePalette.length === kColors) ? currentActivePalette : null;
-        palette = runKMeans(paletteRefPixels, kColors, iterations, initCentroids);
+        palette = paletteRefPixels;
       }
     } else if (pChoice === 'customEyedropper' && PALETTES.customEyedropper && PALETTES.customEyedropper.length > 0) {
-      if (isKMeansIterRefineActive) {
-        const imgData = offCtx.getImageData(0, 0, targetW, targetH);
-        const data = imgData.data;
-        const pixels = [];
-        for (let i = 0; i < data.length; i += 4) {
-          if (data[i + 3] > 64) {
-            pixels.push([data[i], data[i + 1], data[i + 2]]);
-          }
-        }
-        if (pixels.length > 0) {
-          palette = runKMeans(pixels, PALETTES.customEyedropper.length, iterations, PALETTES.customEyedropper);
-          PALETTES.customEyedropper = palette.map(c => [...c]);
-          pickedEyedropperColors = palette.map(c => [...c]);
-          if (isEyedropperActive) updateEyedropperUI();
-          renderSwatches(palette);
-        } else {
-          palette = PALETTES.customEyedropper;
-        }
-      } else {
-        palette = PALETTES.customEyedropper;
-      }
+      palette = PALETTES.customEyedropper;
     } else if (PALETTES[pChoice]) {
-      if (isKMeansIterRefineActive) {
-        const imgData = offCtx.getImageData(0, 0, targetW, targetH);
-        const data = imgData.data;
-        const pixels = [];
-        for (let i = 0; i < data.length; i += 4) {
-          if (data[i + 3] > 64) {
-            pixels.push([data[i], data[i + 1], data[i + 2]]);
-          }
-        }
-        if (pixels.length > 0) {
-          palette = runKMeans(pixels, PALETTES[pChoice].length, iterations, PALETTES[pChoice]);
-        } else {
-          palette = PALETTES[pChoice];
-        }
-      } else {
-        palette = PALETTES[pChoice];
-      }
+      palette = PALETTES[pChoice];
     } else {
+      // ONLY RUN AUTO K-MEANS IF pChoice === 'auto'!
       const imgData = offCtx.getImageData(0, 0, targetW, targetH);
       const data = imgData.data;
       const pixels = [];
@@ -2237,16 +2186,14 @@ async function updatePreviewAsync() {
       }
 
       if (pixels.length > 0) {
-        const initCentroids = (isKMeansIterRefineActive && currentActivePalette && currentActivePalette.length === kColors)
-          ? currentActivePalette
-          : null;
-        palette = runKMeans(pixels, kColors, iterations, initCentroids);
+        palette = runKMeans(pixels, kColors, iterations);
+        currentActivePalette = palette;
       }
     }
 
-    if (palette && (pChoice === 'auto' || pChoice === 'reference')) {
+    if (palette && pChoice === 'auto') {
       renderSwatches(palette);
-      if (isEyedropperActive && pChoice === 'auto') {
+      if (isEyedropperActive) {
         pickedEyedropperColors = palette.map(c => [...c]);
         updateEyedropperUI();
       }
@@ -3669,8 +3616,7 @@ function getActivePaletteColors() {
       return PALETTES['reference'].map(c => [...c]);
     }
     if (paletteRefPixels && paletteRefPixels.length > 0) {
-      const k = parseInt(currentEngine === 'unfake' ? unfakeMaxColors.value : colorCount.value) || 16;
-      return runKMeans(paletteRefPixels, k, 15);
+      return paletteRefPixels.map(c => [...c]);
     }
   }
 
