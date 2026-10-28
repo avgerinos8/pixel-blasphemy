@@ -2386,7 +2386,11 @@ function clampAlpha(ctx, w, h) {
 }
 
 function hexToRgb(hex) {
-  const clean = hex.replace('#', '');
+  if (!hex || typeof hex !== 'string') return [0, 0, 0];
+  let clean = hex.replace('#', '').trim();
+  if (clean.length === 3) {
+    clean = clean.split('').map(c => c + c).join('');
+  }
   return [
     parseInt(clean.substring(0, 2), 16) || 0,
     parseInt(clean.substring(2, 4), 16) || 0,
@@ -2455,14 +2459,21 @@ function runKMeans(pixels, k, iterations, initialCentroids = null) {
   return centroids;
 }
 
-function findNearestColor(c, palette) {
+function findNearestColor(c, palette, maybeB, maybePal) {
+  let col = c;
+  let pal = palette;
+  if (typeof c === 'number' && typeof palette === 'number' && typeof maybeB === 'number') {
+    col = [c, palette, maybeB];
+    pal = maybePal;
+  }
+  if (!pal || pal.length === 0) return col || [0, 0, 0];
   let bestDist = Infinity;
-  let best = palette[0];
-  for (let i = 0; i < palette.length; i++) {
-    const d = colorDistSq(c, palette[i]);
+  let best = pal[0];
+  for (let i = 0; i < pal.length; i++) {
+    const d = colorDistSq(col, pal[i]);
     if (d < bestDist) {
       bestDist = d;
-      best = palette[i];
+      best = pal[i];
     }
   }
   return best;

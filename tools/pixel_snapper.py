@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 PixelBlasphemy Standalone Pixel Snapper Tool (CLI & Batch Processor)
 Based on Hugo Duprez's Sprite Fusion Pixel Snapper algorithm (MIT License).
@@ -17,6 +17,8 @@ def parse_palette_hex(hex_str):
     colors = []
     for item in hex_str.split(','):
         clean = item.strip().lstrip('#')
+        if len(clean) == 3:
+            clean = "".join(c * 2 for c in clean)
         if len(clean) == 6:
             r = int(clean[0:2], 16)
             g = int(clean[2:4], 16)

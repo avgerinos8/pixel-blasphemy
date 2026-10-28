@@ -6,10 +6,12 @@
   --border-light: #3d516b;
   --text-main: #e2e8f0;
   --text-dim: #8b9bb4;
+  --text-muted: #64748b;
   --accent-cyan: #00f0ff;
   --accent-yellow: #ffcc00;
   --accent-magenta: #ff0055;
   --accent-green: #00ff66;
+  --accent-orange: #ff6e00;
   --font-mono: 'Share Tech Mono', monospace;
   --font-pixel: 'VT323', monospace;
 }
