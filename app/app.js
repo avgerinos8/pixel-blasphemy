@@ -536,14 +536,87 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// TABS NAVIGATION
+// TABS NAVIGATION & SECRET EASTER EGG (AFROMAN)
+let secretTabsUnlocked = false;
+let secretKeystrokeBuffer = '';
+const SECRET_CODE = 'afroman';
+const GREEK_KEY_MAP = {
+  'α': 'a', 'φ': 'f', 'ρ': 'r', 'ο': 'o', 'μ': 'm', 'ν': 'n'
+};
+
+function unlockSecretTabs() {
+  if (secretTabsUnlocked) return;
+  secretTabsUnlocked = true;
+
+  const promptBtn = document.getElementById('tabBtnPrompt');
+  const comfyBtn = document.getElementById('tabBtnComfy');
+  const promptContent = document.getElementById('tab-prompt');
+  const comfyContent = document.getElementById('tab-comfy');
+
+  [promptBtn, comfyBtn].forEach(btn => {
+    if (btn) {
+      btn.classList.remove('tab-hidden');
+      if (btn.removeAttribute) btn.removeAttribute('hidden');
+      btn.hidden = false;
+      btn.style.display = '';
+      btn.classList.add('secret-tab-revealed');
+      setTimeout(() => {
+        if (btn.classList) btn.classList.remove('secret-tab-revealed');
+      }, 1000);
+    }
+  });
+
+  [promptContent, comfyContent].forEach(content => {
+    if (content) {
+      content.classList.remove('tab-hidden');
+      if (content.removeAttribute) content.removeAttribute('hidden');
+      content.hidden = false;
+      content.style.display = '';
+    }
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.unlockSecretTabs = unlockSecretTabs;
+}
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    if (btn.classList.contains('tab-hidden') || (!secretTabsUnlocked && (btn.dataset.tab === 'tab-prompt' || btn.dataset.tab === 'tab-comfy'))) {
+      return;
+    }
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById(btn.dataset.tab).classList.add('active');
+    const target = document.getElementById(btn.dataset.tab);
+    if (target && !target.classList.contains('tab-hidden')) {
+      target.classList.add('active');
+    }
   });
+});
+
+window.addEventListener('keydown', (e) => {
+  const activeEl = document.activeElement;
+  if (activeEl && (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName) || activeEl.isContentEditable)) {
+    return;
+  }
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+  let keyChar = '';
+  if (e.code && e.code.startsWith('Key')) {
+    keyChar = e.code.slice(3).toLowerCase();
+  } else if (e.key && e.key.length === 1) {
+    const lowerKey = e.key.toLowerCase();
+    keyChar = GREEK_KEY_MAP[lowerKey] || lowerKey;
+  }
+
+  if (keyChar) {
+    secretKeystrokeBuffer = (secretKeystrokeBuffer + keyChar).slice(-20);
+    if (secretKeystrokeBuffer.endsWith(SECRET_CODE)) {
+      unlockSecretTabs();
+      secretKeystrokeBuffer = '';
+    }
+  }
 });
 
 // BI-DIRECTIONAL SYNC HELPER (SLIDER <-> NUMBER BOX)

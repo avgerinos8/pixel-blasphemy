@@ -119,6 +119,31 @@ html, body {
   font-weight: bold;
 }
 
+.tab-hidden {
+  display: none !important;
+}
+
+.tab-btn.secret-tab-revealed {
+  animation: secretTabFadeIn 0.5s ease-out;
+}
+
+@keyframes secretTabFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-2px);
+    border-color: var(--accent-magenta);
+  }
+  50% {
+    opacity: 0.8;
+    border-color: var(--accent-yellow);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    border-color: var(--border-color);
+  }
+}
+
 /* WORKBENCH LAYOUT */
 .tab-content {
   display: none;

@@ -35,6 +35,7 @@ function createMockElement(id = '', tag = 'div') {
     fill: () => {}
   };
 
+  const classes = new Set();
   return {
     id: id,
     tagName: tag.toUpperCase(),
@@ -45,11 +46,14 @@ function createMockElement(id = '', tag = 'div') {
     height: 100,
     style: {},
     classList: {
-      add: () => {},
-      remove: () => {},
-      toggle: () => {},
-      contains: () => false
+      add: (...c) => c.forEach(x => classes.add(x)),
+      remove: (...c) => c.forEach(x => classes.delete(x)),
+      toggle: (c) => classes.has(c) ? (classes.delete(c), false) : (classes.add(c), true),
+      contains: (c) => classes.has(c)
     },
+    removeAttribute: () => {},
+    setAttribute: () => {},
+    hasAttribute: () => false,
     addEventListener: () => {},
     removeEventListener: () => {},
     querySelector: () => createMockElement('', 'div'),
@@ -102,9 +106,24 @@ const mockDoc = {
   body: createMockElement('body')
 };
 
+const windowListeners = new Map();
+function dispatchWindowEvent(event, data) {
+  const handlers = windowListeners.get(event) || [];
+  handlers.forEach(h => h(data));
+}
+
 const mockWindow = {
-  addEventListener: () => {},
-  removeEventListener: () => {},
+  addEventListener: (event, handler) => {
+    if (!windowListeners.has(event)) windowListeners.set(event, []);
+    windowListeners.get(event).push(handler);
+  },
+  removeEventListener: (event, handler) => {
+    if (windowListeners.has(event)) {
+      const arr = windowListeners.get(event);
+      const i = arr.indexOf(handler);
+      if (i !== -1) arr.splice(i, 1);
+    }
+  },
   ImageToPixel: null,
   UnfakeEngine: null,
   confirm: () => true,
@@ -554,6 +573,49 @@ Columns: 8
     // currentActivePalette must remain intact!
     const afterActive = vm.runInContext('currentActivePalette', ctx);
     expectEqual(afterActive, customColors, 'Active custom palette must NOT be overwritten by handleColorBudgetChange');
+  });
+
+  // 11. Secret Tabs & Afroman Easter Egg
+  console.log('\n--- 11. Secret Tabs & Afroman Easter Egg ---');
+  await test('Secret tabs are initially hidden and locked', () => {
+    const isUnlockedInitial = vm.runInContext('secretTabsUnlocked', ctx);
+    expectEqual(isUnlockedInitial, false, 'secretTabsUnlocked should initially be false');
+  });
+
+  await test('Ambient keystroke listener unlocks secret tabs on "afroman" sequence', () => {
+    vm.runInContext('secretTabsUnlocked = false; secretKeystrokeBuffer = "";', ctx);
+
+    const word = 'afroman';
+    for (const char of word) {
+      dispatchWindowEvent('keydown', {
+        key: char,
+        code: `Key${char.toUpperCase()}`,
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false
+      });
+    }
+
+    const isUnlocked = vm.runInContext('secretTabsUnlocked', ctx);
+    expectEqual(isUnlocked, true, 'Typing "afroman" in the air must unlock secret tabs');
+  });
+
+  await test('Greek layout "αφρομαν" sequence unlocks secret tabs', () => {
+    vm.runInContext('secretTabsUnlocked = false; secretKeystrokeBuffer = "";', ctx);
+
+    const greekChars = ['α', 'φ', 'ρ', 'ο', 'μ', 'α', 'ν'];
+    for (const char of greekChars) {
+      dispatchWindowEvent('keydown', {
+        key: char,
+        code: '',
+        ctrlKey: false,
+        altKey: false,
+        metaKey: false
+      });
+    }
+
+    const isUnlocked = vm.runInContext('secretTabsUnlocked', ctx);
+    expectEqual(isUnlocked, true, 'Typing Greek "αφρομαν" must also unlock secret tabs');
   });
 
   console.log('\n========================================');
