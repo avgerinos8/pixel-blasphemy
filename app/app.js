@@ -4074,9 +4074,9 @@ async function loadSavedPalettes() {
     }
   });
 
-  // 2. Try loading from Backend Server (/api/palettes) safely if available
+  // 2. Try loading from Backend Server (api/palettes) safely if available
   try {
-    const res = await fetch('/api/palettes');
+    const res = await fetch('api/palettes');
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
@@ -4132,7 +4132,7 @@ if (btnSaveCustomPalette) {
     // 2. Safely attempt to persist to Backend API (if server is active)
     let savedToBackend = false;
     try {
-      const res = await fetch('/api/palettes', {
+      const res = await fetch('api/palettes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4973,7 +4973,7 @@ if (btnSaveOptions) {
     // 2. Safely attempt to save to backend API if available
     let savedToBackend = false;
     try {
-      const res = await fetch('/api/options', {
+      const res = await fetch('api/options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, options })
@@ -5015,7 +5015,7 @@ async function renderSavedOptionsModal() {
 
   // 2. Try loading from server if available
   try {
-    const res = await fetch('/api/options');
+    const res = await fetch('api/options');
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
