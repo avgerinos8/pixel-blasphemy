@@ -364,6 +364,10 @@ const btnBatchPrev = document.getElementById('btnBatchPrev');
 const btnBatchNext = document.getElementById('btnBatchNext');
 const batchNavBadge = document.getElementById('batchNavBadge');
 const batchSelectDropdown = document.getElementById('batchSelectDropdown');
+const batchSamePalette1 = document.getElementById('batchSamePalette1');
+const batchSamePalette2 = document.getElementById('batchSamePalette2');
+let isBatchSamePalette = false;
+let masterBatchPalette = null;
 
 // Download & Stats
 const btnDownload = document.getElementById('btnDownload');
@@ -1666,10 +1670,35 @@ function clearBatchQueue() {
   } else {
     batchFiles = [];
     currentBatchIndex = 0;
+    masterBatchPalette = null;
   }
   updateBatchList();
   updateBatchNavUI();
 }
+
+[batchSamePalette1, batchSamePalette2].forEach(chk => {
+  if (chk) {
+    chk.addEventListener('change', (e) => {
+      const isChecked = e.target.checked;
+      isBatchSamePalette = isChecked;
+      if (batchSamePalette1) batchSamePalette1.checked = isChecked;
+      if (batchSamePalette2) batchSamePalette2.checked = isChecked;
+
+      if (isChecked) {
+        const activeColors = getActivePaletteColors();
+        if (activeColors && activeColors.length > 0) {
+          masterBatchPalette = activeColors.map(c => [...c]);
+        }
+      } else {
+        masterBatchPalette = null;
+        if (paletteSelect.value === 'auto') {
+          currentActivePalette = null;
+        }
+      }
+      triggerPreviewDebounced();
+    });
+  }
+});
 
 function handleFiles(files) {
   const fileArr = Array.from(files);
@@ -2087,6 +2116,8 @@ async function updatePreviewAsync() {
         }
       } else if (PALETTES[pChoice]) {
         activePalette = PALETTES[pChoice];
+      } else if (isBatchSamePalette && masterBatchPalette && masterBatchPalette.length > 0) {
+        activePalette = masterBatchPalette;
       }
 
       if (window.UnfakeEngine && typeof window.UnfakeEngine.process === 'function') {
@@ -2113,6 +2144,9 @@ async function updatePreviewAsync() {
 
         currentSnappedCanvas = res.canvas;
         currentActivePalette = activePalette || (res.palette ? res.palette.map(p => typeof p === 'string' ? hexToRgb(p) : p) : null);
+        if (isBatchSamePalette && currentActivePalette && (!masterBatchPalette || masterBatchPalette.length === 0)) {
+          masterBatchPalette = currentActivePalette.map(c => [...c]);
+        }
         activeColors.textContent = res.colorsUsed || (currentActivePalette ? currentActivePalette.length : 'All');
         if (currentActivePalette && isEyedropperActive && unfakePaletteSelect.value === 'auto') {
           pickedEyedropperColors = currentActivePalette.map(c => [...c]);
@@ -2166,29 +2200,41 @@ async function updatePreviewAsync() {
       palette = PALETTES[pChoice];
     } else {
       // ONLY RUN AUTO K-MEANS IF pChoice === 'auto'!
-      const imgData = offCtx.getImageData(0, 0, targetW, targetH);
-      const data = imgData.data;
-      const pixels = [];
+      if (isBatchSamePalette && masterBatchPalette && masterBatchPalette.length > 0) {
+        palette = masterBatchPalette;
+        currentActivePalette = palette;
+      } else {
+        const imgData = offCtx.getImageData(0, 0, targetW, targetH);
+        const data = imgData.data;
+        const pixels = [];
 
-      for (let i = 0; i < data.length; i += 4) {
-        if (data[i + 3] > 64) {
-          const r = data[i], g = data[i + 1], b = data[i + 2];
-          const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-          pixels.push([r, g, b]);
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] > 64) {
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+            pixels.push([r, g, b]);
 
-          if (luminance < 75 && oWeight > 1.0) {
-            const extraCopies = Math.round(oWeight - 1.0);
-            for (let c = 0; c < extraCopies; c++) {
-              pixels.push([r, g, b]);
+            if (luminance < 75 && oWeight > 1.0) {
+              const extraCopies = Math.round(oWeight - 1.0);
+              for (let c = 0; c < extraCopies; c++) {
+                pixels.push([r, g, b]);
+              }
             }
           }
         }
-      }
 
-      if (pixels.length > 0) {
-        palette = runKMeans(pixels, kColors, iterations);
-        currentActivePalette = palette;
+        if (pixels.length > 0) {
+          palette = runKMeans(pixels, kColors, iterations);
+          currentActivePalette = palette;
+          if (isBatchSamePalette) {
+            masterBatchPalette = palette.map(c => [...c]);
+          }
+        }
       }
+    }
+
+    if (palette && isBatchSamePalette && (!masterBatchPalette || masterBatchPalette.length === 0)) {
+      masterBatchPalette = palette.map(c => [...c]);
     }
 
     if (palette && pChoice === 'auto') {
@@ -3610,6 +3656,11 @@ function getActivePaletteColors() {
     return pickedEyedropperColors.map(c => [...c]);
   }
 
+  // If batch same palette is active and master palette is established
+  if (isBatchSamePalette && masterBatchPalette && masterBatchPalette.length > 0) {
+    return masterBatchPalette.map(c => [...c]);
+  }
+
   // If reference / GPL palette
   if (pChoice === 'reference') {
     if (PALETTES['reference'] && PALETTES['reference'].length > 0) {
@@ -3726,6 +3777,9 @@ function showEyedropperHint(msg) {
 function applyLiveCustomPalette() {
   if (pickedEyedropperColors.length === 0) return;
   PALETTES.customEyedropper = pickedEyedropperColors.map(c => [...c]);
+  if (isBatchSamePalette) {
+    masterBatchPalette = pickedEyedropperColors.map(c => [...c]);
+  }
 
   [paletteSelect, unfakePaletteSelect].forEach(sel => {
     if (!sel) return;
@@ -4473,6 +4527,9 @@ function syncAdvPickerUI(source = 'all') {
     }
     if (toggleLivePalette && toggleLivePalette.checked) {
       PALETTES.customEyedropper = pickedEyedropperColors.map(c => [...c]);
+      if (isBatchSamePalette) {
+        masterBatchPalette = pickedEyedropperColors.map(c => [...c]);
+      }
       triggerPreviewDebounced();
     }
   }
@@ -5320,6 +5377,14 @@ if (btnUnfakeDownload) {
 // BATCH PROCESSING
 async function processBatch() {
   if (batchFiles.length === 0) return;
+
+  // If SAME PALETTE is enabled, establish masterBatchPalette before batch export starts
+  if (isBatchSamePalette && (!masterBatchPalette || masterBatchPalette.length === 0)) {
+    const activeColors = getActivePaletteColors();
+    if (activeColors && activeColors.length > 0) {
+      masterBatchPalette = activeColors.map(c => [...c]);
+    }
+  }
 
   const buttons = [document.getElementById('btnProcessBatch'), btnUnfakeProcessBatch];
   buttons.forEach(b => { if (b) { b.disabled = true; b.textContent = "Processing Batch..."; } });
