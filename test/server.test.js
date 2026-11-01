@@ -90,6 +90,20 @@ async function runServerTests() {
     const r6 = await request(testPort, 'GET', '/non_existent_file_xyz.txt');
     assert('GET non-existent file returns 404', r6.status === 404);
 
+    // 7. GET /api/upscale/status
+    const r7 = await request(testPort, 'GET', '/api/upscale/status');
+    assert('GET /api/upscale/status returns 200 and GPU detection', r7.status === 200 && r7.data.success === true && r7.data.hasRealEsrgan === true);
+
+    // 8. POST /api/upscale (2x opaque upscale test)
+    const demoB64 = fs.readFileSync(path.join(ROOT, 'app', 'demo-pixel.png')).toString('base64');
+    const r8 = await request(testPort, 'POST', '/api/upscale', {
+      image: `data:image/png;base64,${demoB64}`,
+      scale: 2,
+      isOpaque: true,
+      name: 'test_tile'
+    });
+    assert('POST /api/upscale returns 200 and upscaled image', r8.status === 200 && r8.data.success === true && r8.data.filename === '2x_opaque_test_tile.png' && typeof r8.data.dataUrl === 'string');
+
   } catch (err) {
     console.error('Server integration test error:', err);
     failed++;

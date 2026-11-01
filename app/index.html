@@ -24,6 +24,7 @@
       </div>
       <div class="tabs-group">
         <button class="tab-btn active" data-tab="tab-snapper">Pixel Snapper Studio</button>
+        <button class="tab-btn" data-tab="tab-extractor" id="tabBtnExtractor">HITL Asset Studio & Upscaler</button>
         <button class="tab-btn tab-hidden" id="tabBtnPrompt" data-tab="tab-prompt" hidden style="display: none;">Nano-Banana Prompt Lab</button>
         <button class="tab-btn tab-hidden" id="tabBtnComfy" data-tab="tab-comfy" hidden style="display: none;">ComfyUI Pro Configurations</button>
       </div>
@@ -896,6 +897,170 @@
         </section>
       </div>
     </main>
+
+    <!-- TAB: HITL ASSET STUDIO & UPSCALER (PUBLIC ACCESSIBLE) -->
+    <section class="tab-content" id="tab-extractor">
+      <!-- TOP TOOLBAR & CONTROLS -->
+      <header class="hitl-header">
+        <div class="hitl-brand">
+          <span class="hitl-brand-title">STREETS OF REGEX // HITL ASSET EXTRACTOR</span>
+          <span class="hitl-badge">STUDIO</span>
+          <span class="hitl-gpu-badge" id="hitlGpuStatusBadge">DETECTING GPU...</span>
+        </div>
+
+        <div class="hitl-top-controls">
+          <input type="file" id="hitlFilePicker" accept="image/*" style="display: none;">
+          <button type="button" class="btn btn-primary" id="hitlBtnUpload">📁 OPEN CONCEPT ART...</button>
+          <button type="button" class="btn-tool" id="hitlBtnResetZoom">🔍 RESET VIEW</button>
+          <button type="button" class="btn-tool" id="hitlBtnPanMode">✋ PAN (SPACE)</button>
+        </div>
+
+        <div class="hitl-hardware-toggle">
+          <label class="hitl-toggle-label" for="hitlToggleLocalUpscale" title="Upscale using local computer hardware (Real-ESRGAN Vulkan GPU) vs in-browser memory">
+            <input type="checkbox" id="hitlToggleLocalUpscale" checked>
+            <span>USE LOCAL PC RESOURCES (REAL-ESRGAN VULKAN)</span>
+          </label>
+        </div>
+
+        <div class="hitl-top-actions">
+          <button type="button" class="btn btn-secondary" id="hitlBtnDownloadAll" disabled>💾 EXTRACT ALL CROPS</button>
+          <button type="button" class="btn btn-primary" id="hitlBtnUpscaleAll" disabled>⚡ BATCH UPSCALE ALL</button>
+        </div>
+      </header>
+
+      <!-- WORKSPACE: CANVAS + INSPECTOR SIDEBAR -->
+      <div class="hitl-workspace">
+        <!-- CANVAS CONTAINER -->
+        <div class="hitl-canvas-container" id="hitlCanvasContainer">
+          <canvas id="hitlViewCanvas"></canvas>
+          <div class="hitl-hud-overlay">
+            <div>ZOOM: <span id="hitlHudZoom">100%</span></div>
+            <div>IMAGE: <span id="hitlHudDims">-</span></div>
+            <div>CURSOR: <span id="hitlHudCoords">0, 0</span></div>
+          </div>
+        </div>
+
+        <!-- INSPECTOR SIDEBAR -->
+        <aside class="hitl-sidebar">
+          <!-- ACTIVE SELECTION INSPECTOR -->
+          <div class="hitl-panel-section">
+            <div class="hitl-panel-title">
+              <span>ACTIVE SELECTION</span>
+              <span id="hitlActiveBadge" class="prop-item-badge hitl-badge-none">NONE</span>
+            </div>
+
+            <div class="hitl-form-group">
+              <label for="hitlPropName">PROP / ASSET NAME</label>
+              <input type="text" id="hitlPropName" placeholder="e.g. taxi_yellow_athens" spellcheck="false">
+            </div>
+
+            <div class="hitl-form-group">
+              <label>CROP COORDINATES (X1, Y1, X2, Y2)</label>
+              <div class="hitl-coords-grid">
+                <input type="number" id="hitlBoxX1" placeholder="X1" title="X1">
+                <input type="number" id="hitlBoxY1" placeholder="Y1" title="Y1">
+                <input type="number" id="hitlBoxX2" placeholder="X2" title="X2">
+                <input type="number" id="hitlBoxY2" placeholder="Y2" title="Y2">
+              </div>
+            </div>
+
+            <div class="hitl-form-group">
+              <div class="hitl-checkbox-group">
+                <input type="checkbox" id="hitlIsOpaque">
+                <label for="hitlIsOpaque">OPAQUE (SKIP BACKGROUND REMOVAL)</label>
+              </div>
+            </div>
+
+            <div class="hitl-calc-card">
+              <div class="hitl-calc-row">
+                <span>RAW CROP SIZE:</span>
+                <span id="hitlRawCropDims" class="hitl-calc-val">0 × 0 px</span>
+              </div>
+
+              <div class="hitl-scale-container">
+                <div class="hitl-scale-header">
+                  <label class="hitl-scale-label">UPSCALE RATIO:</label>
+                  <div class="hitl-scale-input-wrapper">
+                    <input type="number" id="hitlScaleInput" min="1" max="48" step="1" value="4">
+                    <span>x</span>
+                  </div>
+                </div>
+
+                <div class="hitl-slider-wrapper">
+                  <input type="range" id="hitlScaleSlider" min="1" max="48" step="1" value="4">
+                  <span id="hitlSliderValDisplay">4x</span>
+                </div>
+
+                <div class="hitl-scale-selector">
+                  <button type="button" class="hitl-scale-btn" data-scale="2">2x</button>
+                  <button type="button" class="hitl-scale-btn active" data-scale="4">4x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="6">6x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="8">8x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="10">10x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="12">12x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="14">14x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="16">16x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="20">20x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="24">24x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="32">32x</button>
+                  <button type="button" class="hitl-scale-btn" data-scale="48">48x</button>
+                </div>
+              </div>
+
+              <div class="hitl-calc-row" style="margin-top: 8px;">
+                <span>PREDICTED NATIVE SUPER-RES:</span>
+                <span id="hitlPredictedCropDims" class="hitl-calc-val predicted">0 × 0 px</span>
+              </div>
+
+              <div style="margin-top: 6px;">
+                <label class="hitl-scale-label">EXPORT FILENAME CONVENTION:</label>
+                <div class="hitl-filename-preview" id="hitlFilenamePreview">-</div>
+              </div>
+            </div>
+
+            <div class="hitl-action-buttons">
+              <button type="button" class="btn btn-secondary" id="hitlBtnDownloadCurrent" disabled>💾 DOWNLOAD CROP</button>
+              <button type="button" class="btn btn-primary" id="hitlBtnUpscaleCurrent" disabled>⚡ UPSCALE ACTIVE</button>
+              <button type="button" class="btn btn-tool" id="hitlBtnSendToSnapper" disabled title="Send this crop or upscaled asset directly into Pixel Snapper Studio for pixelation & color quantization">🎯 SEND TO PIXEL SNAPPER</button>
+            </div>
+          </div>
+
+          <!-- SELECTIONS LIST -->
+          <div class="hitl-panel-section hitl-selections-panel">
+            <div class="hitl-panel-title">
+              <span>SELECTIONS (<span id="hitlSelectionsCount">0</span>)</span>
+              <div class="hitl-list-btn-group">
+                <button type="button" class="btn-tool-sm btn-tool-active" id="hitlBtnAddSelection" title="New Selection (+)">+ NEW</button>
+                <button type="button" class="btn-tool-sm btn-tool-active" id="hitlBtnAddSame" title="New Selection with same dimensions as active (Hotkey: S)">+ SAME</button>
+                <button type="button" class="btn-tool-sm" id="hitlBtnDeleteSelection" title="Delete Active Selection (-)" disabled>- DEL</button>
+                <button type="button" class="btn-tool-sm" id="hitlBtnClearAll" title="Clear All Selections">CLEAR</button>
+              </div>
+            </div>
+
+            <div class="hitl-props-list" id="hitlSelectionsList">
+              <div class="hitl-empty-hint">
+                No selections yet.<br>
+                Drag on the canvas (or click <strong>+ NEW</strong>) to select asset bounding boxes.<br>
+                <small>💡 Hold <b>Shift</b> for 1:1 square crop or ratio lock</small>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- STATUS BAR -->
+      <footer class="hitl-status-bar">
+        <div id="hitlStatusMsg">Ready. Open a concept art image to begin extracting assets.</div>
+        <div class="hitl-shortcuts-tip">
+          <kbd>Shift + Drag</kbd> 1:1 Square &nbsp;|&nbsp;
+          <kbd>Shift + Corner</kbd> Keep Ratio &nbsp;|&nbsp;
+          <kbd>S</kbd> + Same Size &nbsp;|&nbsp;
+          <kbd>Drag Inside</kbd> Move &nbsp;|&nbsp;
+          <kbd>Space</kbd> Pan &nbsp;|&nbsp;
+          <kbd>Del</kbd> Remove
+        </div>
+      </footer>
+    </section>
 
 ﻿    <!-- TAB 2: NANO-BANANA PROMPT LAB -->
     <section class="tab-content tab-hidden" id="tab-prompt" hidden style="display: none;">

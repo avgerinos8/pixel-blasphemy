@@ -618,6 +618,39 @@ Columns: 8
     expectEqual(isUnlocked, true, 'Typing Greek "αφρομαν" must also unlock secret tabs');
   });
 
+  // 12. HITL Asset Extractor & Filename Rules
+  console.log('\n--- 12. HITL Asset Extractor & Filename Rules ---');
+  await test('hitlFormatScale handles integer and floating point scales', () => {
+    const fn = vm.runInContext('hitlFormatScale', ctx);
+    expectEqual(fn(4), '4');
+    expectEqual(fn(2.5), '2.5');
+    expectEqual(fn(8), '8');
+  });
+
+  await test('hitlComputeFilename follows Streets of Regex scale and opaque conventions', () => {
+    const fn = vm.runInContext('hitlComputeFilename', ctx);
+    expectEqual(fn('taxi_yellow', 4, false), '4x_taxi_yellow.png');
+    expectEqual(fn('wall_tile', 8, true), '8x_opaque_wall_tile.png');
+    expectEqual(fn('Prop With Spaces! & Symbols', 2, false), '2x_prop_with_spaces____symbols.png');
+    expectEqual(fn('Ground Grass', 16, true), '16x_opaque_ground_grass.png');
+  });
+
+  await test('computeHitlMove shifts selection box and clamps to bounds', () => {
+    vm.runInContext('hitlState.imgWidth = 500; hitlState.imgHeight = 500;', ctx);
+    const moveFn = vm.runInContext('computeHitlMove', ctx);
+    const origBox = [50, 50, 150, 150]; // 100x100
+    const moved = moveFn(origBox, { x: 50, y: 50 }, { x: 70, y: 80 });
+    expectEqual(moved[0], 70);
+    expectEqual(moved[1], 80);
+    expectEqual(moved[2], 170);
+    expectEqual(moved[3], 180);
+
+    // Clamping against right bound
+    const clamped = moveFn(origBox, { x: 50, y: 50 }, { x: 600, y: 50 });
+    expectEqual(clamped[0], 400); // 500 - 100
+    expectEqual(clamped[2], 500);
+  });
+
   console.log('\n========================================');
   console.log(`TOTAL UNIT TESTS: ${testCount} | PASSED: ${passCount} | FAILED: ${failCount}`);
   console.log('========================================\n');

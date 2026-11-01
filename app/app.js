@@ -5722,3 +5722,1340 @@ loadSavedPalettes();
 initAdjustmentsEvents();
 
 
+
+
+// ==========================================================================
+// HITL ASSET STUDIO & HARDWARE UPSCALE PIPELINE
+// ==========================================================================
+
+const HITL_SELECTION_COLORS = [
+  '#00f0ff', // Electric Cyan
+  '#ffe600', // Neon Yellow
+  '#70ff00', // Bright Lime
+  '#ff0055', // Neon Magenta
+  '#ff9f43', // Bright Tangerine
+  '#54a0ff', // Sky Blue
+  '#fd79a8', // Bubblegum Pink
+  '#1dd1a1', // Mint Green
+  '#fdcb6e', // Warm Amber
+  '#a29bfe', // Soft Violet
+  '#48dbfb', // Ice Blue
+  '#ff7675'  // Coral Red
+];
+
+const hitlState = {
+  image: null,
+  fileName: 'image',
+  imgWidth: 0,
+  imgHeight: 0,
+  zoom: 1.0,
+  panX: 0,
+  panY: 0,
+  isPanning: false,
+  panStart: { x: 0, y: 0 },
+  isSpaceDown: false,
+  panMode: false,
+  selections: [],
+  activeId: null,
+  colorIndex: 0,
+  selectedScale: 4.0,
+  isOpaque: false,
+  dragMode: null, // null | 'create' | 'move' | 'nw' | 'ne' | 'se' | 'sw' | 'n' | 's' | 'e' | 'w'
+  dragStartImagePt: { x: 0, y: 0 },
+  drawStart: { x: 0, y: 0 },
+  initialBox: [0, 0, 0, 0],
+  lastMousePos: null,
+  gpuAvailable: false,
+  lastProcessedBlob: null,
+  lastProcessedFilename: null
+};
+
+const hitlCanvas = document.getElementById('hitlViewCanvas');
+const hitlCtx = hitlCanvas ? hitlCanvas.getContext('2d') : null;
+const hitlContainer = document.getElementById('hitlCanvasContainer');
+
+const hitlFilePicker = document.getElementById('hitlFilePicker');
+const hitlBtnUpload = document.getElementById('hitlBtnUpload');
+const hitlBtnResetZoom = document.getElementById('hitlBtnResetZoom');
+const hitlBtnPanMode = document.getElementById('hitlBtnPanMode');
+const hitlToggleLocalUpscale = document.getElementById('hitlToggleLocalUpscale');
+const hitlGpuStatusBadge = document.getElementById('hitlGpuStatusBadge');
+const hitlBtnDownloadAll = document.getElementById('hitlBtnDownloadAll');
+const hitlBtnUpscaleAll = document.getElementById('hitlBtnUpscaleAll');
+
+const hitlHudZoom = document.getElementById('hitlHudZoom');
+const hitlHudDims = document.getElementById('hitlHudDims');
+const hitlHudCoords = document.getElementById('hitlHudCoords');
+const hitlStatusMsg = document.getElementById('hitlStatusMsg');
+
+const hitlActiveBadge = document.getElementById('hitlActiveBadge');
+const hitlPropName = document.getElementById('hitlPropName');
+const hitlBoxX1 = document.getElementById('hitlBoxX1');
+const hitlBoxY1 = document.getElementById('hitlBoxY1');
+const hitlBoxX2 = document.getElementById('hitlBoxX2');
+const hitlBoxY2 = document.getElementById('hitlBoxY2');
+const hitlIsOpaque = document.getElementById('hitlIsOpaque');
+
+const hitlRawCropDims = document.getElementById('hitlRawCropDims');
+const hitlScaleInput = document.getElementById('hitlScaleInput');
+const hitlScaleSlider = document.getElementById('hitlScaleSlider');
+const hitlSliderValDisplay = document.getElementById('hitlSliderValDisplay');
+const hitlPredictedCropDims = document.getElementById('hitlPredictedCropDims');
+const hitlFilenamePreview = document.getElementById('hitlFilenamePreview');
+
+const hitlBtnDownloadCurrent = document.getElementById('hitlBtnDownloadCurrent');
+const hitlBtnUpscaleCurrent = document.getElementById('hitlBtnUpscaleCurrent');
+const hitlBtnSendToSnapper = document.getElementById('hitlBtnSendToSnapper');
+
+const hitlSelectionsCount = document.getElementById('hitlSelectionsCount');
+const hitlBtnAddSelection = document.getElementById('hitlBtnAddSelection');
+const hitlBtnAddSame = document.getElementById('hitlBtnAddSame');
+const hitlBtnDeleteSelection = document.getElementById('hitlBtnDeleteSelection');
+const hitlBtnClearAll = document.getElementById('hitlBtnClearAll');
+const hitlSelectionsList = document.getElementById('hitlSelectionsList');
+const tabBtnExtractor = document.getElementById('tabBtnExtractor');
+
+function hitlFormatScale(val) {
+  if (Number.isInteger(val)) return val.toString();
+  return parseFloat(val.toFixed(2)).toString();
+}
+
+function hitlComputeFilename(name, scale, isOpaque) {
+  const cleanName = (name || 'prop').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+  const opaquePrefix = isOpaque ? 'opaque_' : '';
+  const scaleStr = hitlFormatScale(scale);
+  return `${scaleStr}x_${opaquePrefix}${cleanName}.png`;
+}
+
+function resizeHitlCanvas() {
+  if (!hitlCanvas || !hitlContainer) return;
+  hitlCanvas.width = hitlContainer.clientWidth;
+  hitlCanvas.height = hitlContainer.clientHeight;
+  renderHitl();
+}
+
+function loadHitlImageFromSrc(src, name = 'image') {
+  if (hitlStatusMsg) hitlStatusMsg.textContent = 'Loading image...';
+  const img = new Image();
+  img.onload = () => {
+    hitlState.image = img;
+    hitlState.fileName = name.replace(/\.[^/.]+$/, '');
+    hitlState.imgWidth = img.naturalWidth || img.width;
+    hitlState.imgHeight = img.naturalHeight || img.height;
+    hitlState.selections = [];
+    hitlState.activeId = null;
+    hitlState.colorIndex = 0;
+    hitlResetView();
+    if (hitlHudDims) hitlHudDims.textContent = `${hitlState.imgWidth} × ${hitlState.imgHeight} px`;
+    if (hitlStatusMsg) hitlStatusMsg.textContent = `Loaded: ${name} (${hitlState.imgWidth}×${hitlState.imgHeight} px)`;
+    updateHitlInspector();
+    updateHitlSelectionsListUI();
+    renderHitl();
+  };
+  img.src = src;
+}
+
+function hitlResetView() {
+  if (!hitlState.image || !hitlCanvas) return;
+  const fitZoomX = (hitlCanvas.width - 60) / hitlState.imgWidth;
+  const fitZoomY = (hitlCanvas.height - 60) / hitlState.imgHeight;
+  hitlState.zoom = Math.min(fitZoomX, fitZoomY, 1.0);
+  hitlState.panX = (hitlCanvas.width - hitlState.imgWidth * hitlState.zoom) / 2;
+  hitlState.panY = (hitlCanvas.height - hitlState.imgHeight * hitlState.zoom) / 2;
+  if (hitlHudZoom) hitlHudZoom.textContent = `${Math.round(hitlState.zoom * 100)}%`;
+  renderHitl();
+}
+
+function hitlScreenToImage(sx, sy) {
+  if (!hitlCanvas) return { x: 0, y: 0 };
+  const rect = hitlCanvas.getBoundingClientRect();
+  const cx = sx - rect.left;
+  const cy = sy - rect.top;
+  const ix = Math.round((cx - hitlState.panX) / hitlState.zoom);
+  const iy = Math.round((cy - hitlState.panY) / hitlState.zoom);
+  return {
+    x: Math.max(0, Math.min(hitlState.imgWidth, ix)),
+    y: Math.max(0, Math.min(hitlState.imgHeight, iy))
+  };
+}
+
+function getHitlHitInfo(screenX, screenY) {
+  if (!hitlState.image || !hitlCanvas) return null;
+  const rect = hitlCanvas.getBoundingClientRect();
+  const cx = screenX - rect.left;
+  const cy = screenY - rect.top;
+
+  const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+
+  if (activeSel) {
+    const [x1, y1, x2, y2] = activeSel.box;
+    const sx1 = x1 * hitlState.zoom + hitlState.panX;
+    const sy1 = y1 * hitlState.zoom + hitlState.panY;
+    const sx2 = x2 * hitlState.zoom + hitlState.panX;
+    const sy2 = y2 * hitlState.zoom + hitlState.panY;
+
+    const minX = Math.min(sx1, sx2);
+    const maxX = Math.max(sx1, sx2);
+    const minY = Math.min(sy1, sy2);
+    const maxY = Math.max(sy1, sy2);
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+
+    const cornerRadius = 11;
+    const edgeRadius = 8;
+
+    if (Math.hypot(cx - minX, cy - minY) <= cornerRadius) return { type: 'nw', sel: activeSel };
+    if (Math.hypot(cx - maxX, cy - minY) <= cornerRadius) return { type: 'ne', sel: activeSel };
+    if (Math.hypot(cx - maxX, cy - maxY) <= cornerRadius) return { type: 'se', sel: activeSel };
+    if (Math.hypot(cx - minX, cy - maxY) <= cornerRadius) return { type: 'sw', sel: activeSel };
+
+    if (Math.hypot(cx - midX, cy - minY) <= edgeRadius) return { type: 'n', sel: activeSel };
+    if (Math.hypot(cx - midX, cy - maxY) <= edgeRadius) return { type: 's', sel: activeSel };
+    if (Math.hypot(cx - minX, cy - midY) <= edgeRadius) return { type: 'w', sel: activeSel };
+    if (Math.hypot(cx - maxX, cy - midY) <= edgeRadius) return { type: 'e', sel: activeSel };
+
+    if (Math.abs(cy - minY) <= edgeRadius && cx >= minX && cx <= maxX) return { type: 'n', sel: activeSel };
+    if (Math.abs(cy - maxY) <= edgeRadius && cx >= minX && cx <= maxX) return { type: 's', sel: activeSel };
+    if (Math.abs(cx - minX) <= edgeRadius && cy >= minY && cy <= maxY) return { type: 'w', sel: activeSel };
+    if (Math.abs(cx - maxX) <= edgeRadius && cy >= minY && cy <= maxY) return { type: 'e', sel: activeSel };
+
+    if (cx > minX && cx < maxX && cy > minY && cy < maxY) {
+      return { type: 'move', sel: activeSel };
+    }
+  }
+
+  for (let i = hitlState.selections.length - 1; i >= 0; i--) {
+    const sel = hitlState.selections[i];
+    if (sel.id === hitlState.activeId) continue;
+    const [x1, y1, x2, y2] = sel.box;
+    const sx1 = x1 * hitlState.zoom + hitlState.panX;
+    const sy1 = y1 * hitlState.zoom + hitlState.panY;
+    const sx2 = x2 * hitlState.zoom + hitlState.panX;
+    const sy2 = y2 * hitlState.zoom + hitlState.panY;
+
+    const minX = Math.min(sx1, sx2);
+    const maxX = Math.max(sx1, sx2);
+    const minY = Math.min(sy1, sy2);
+    const maxY = Math.max(sy1, sy2);
+
+    if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) {
+      return { type: 'select', sel: sel };
+    }
+  }
+
+  return null;
+}
+
+function updateHitlCursor(e) {
+  if (!hitlContainer) return;
+  if (hitlState.isPanning) {
+    hitlContainer.style.cursor = 'grabbing';
+    return;
+  }
+  if (hitlState.isSpaceDown || hitlState.panMode) {
+    hitlContainer.style.cursor = 'grab';
+    return;
+  }
+  if (!hitlState.image) {
+    hitlContainer.style.cursor = 'default';
+    return;
+  }
+
+  if (hitlState.dragMode) {
+    switch (hitlState.dragMode) {
+      case 'nw':
+      case 'se':
+        hitlContainer.style.cursor = 'nwse-resize';
+        break;
+      case 'ne':
+      case 'sw':
+        hitlContainer.style.cursor = 'nesw-resize';
+        break;
+      case 'n':
+      case 's':
+        hitlContainer.style.cursor = 'ns-resize';
+        break;
+      case 'w':
+      case 'e':
+        hitlContainer.style.cursor = 'ew-resize';
+        break;
+      case 'move':
+        hitlContainer.style.cursor = 'move';
+        break;
+      case 'create':
+        hitlContainer.style.cursor = 'crosshair';
+        break;
+    }
+    return;
+  }
+
+  const hit = getHitlHitInfo(e.clientX, e.clientY);
+  if (!hit) {
+    hitlContainer.style.cursor = 'crosshair';
+    return;
+  }
+
+  switch (hit.type) {
+    case 'nw':
+    case 'se':
+      hitlContainer.style.cursor = 'nwse-resize';
+      break;
+    case 'ne':
+    case 'sw':
+      hitlContainer.style.cursor = 'nesw-resize';
+      break;
+    case 'n':
+    case 's':
+      hitlContainer.style.cursor = 'ns-resize';
+      break;
+    case 'w':
+    case 'e':
+      hitlContainer.style.cursor = 'ew-resize';
+      break;
+    case 'move':
+      hitlContainer.style.cursor = 'move';
+      break;
+    case 'select':
+      hitlContainer.style.cursor = 'pointer';
+      break;
+    default:
+      hitlContainer.style.cursor = 'crosshair';
+  }
+}
+
+function computeHitlCreation(startPt, currentPt, isShift) {
+  const dx = currentPt.x - startPt.x;
+  const dy = currentPt.y - startPt.y;
+  const signX = Math.sign(dx) || 1;
+  const signY = Math.sign(dy) || 1;
+
+  if (isShift) {
+    let side = Math.max(Math.abs(dx), Math.abs(dy));
+    const maxW = signX > 0 ? (hitlState.imgWidth - startPt.x) : startPt.x;
+    const maxH = signY > 0 ? (hitlState.imgHeight - startPt.y) : startPt.y;
+    side = Math.min(side, maxW, maxH);
+
+    const targetX = startPt.x + signX * side;
+    const targetY = startPt.y + signY * side;
+    return [
+      Math.min(startPt.x, targetX),
+      Math.min(startPt.y, targetY),
+      Math.max(startPt.x, targetX),
+      Math.max(startPt.y, targetY)
+    ];
+  } else {
+    const clampedX = Math.max(0, Math.min(hitlState.imgWidth, currentPt.x));
+    const clampedY = Math.max(0, Math.min(hitlState.imgHeight, currentPt.y));
+    return [
+      Math.min(startPt.x, clampedX),
+      Math.min(startPt.y, clampedY),
+      Math.max(startPt.x, clampedX),
+      Math.max(startPt.y, clampedY)
+    ];
+  }
+}
+
+function computeHitlMove(origBox, startPt, currentPt) {
+  const [ox1, oy1, ox2, oy2] = origBox;
+  const dx = currentPt.x - startPt.x;
+  const dy = currentPt.y - startPt.y;
+  const w = ox2 - ox1;
+  const h = oy2 - oy1;
+
+  let nx1 = ox1 + dx;
+  let ny1 = oy1 + dy;
+
+  nx1 = Math.max(0, Math.min(hitlState.imgWidth - w, nx1));
+  ny1 = Math.max(0, Math.min(hitlState.imgHeight - h, ny1));
+
+  return [nx1, ny1, nx1 + w, ny1 + h];
+}
+
+function computeHitlEdgeResize(handle, origBox, currentPt) {
+  const [ox1, oy1, ox2, oy2] = origBox;
+  switch (handle) {
+    case 'n': {
+      const newY1 = Math.min(oy2 - 4, Math.max(0, currentPt.y));
+      return [ox1, newY1, ox2, oy2];
+    }
+    case 's': {
+      const newY2 = Math.max(oy1 + 4, Math.min(hitlState.imgHeight, currentPt.y));
+      return [ox1, oy1, ox2, newY2];
+    }
+    case 'w': {
+      const newX1 = Math.min(ox2 - 4, Math.max(0, currentPt.x));
+      return [newX1, oy1, ox2, oy2];
+    }
+    case 'e': {
+      const newX2 = Math.max(ox1 + 4, Math.min(hitlState.imgWidth, currentPt.x));
+      return [ox1, oy1, newX2, oy2];
+    }
+  }
+  return origBox;
+}
+
+function computeHitlCornerResize(anchorX, anchorY, currentPt, origW, origH, isShift) {
+  const rawDx = currentPt.x - anchorX;
+  const rawDy = currentPt.y - anchorY;
+  const signX = Math.sign(rawDx) || 1;
+  const signY = Math.sign(rawDy) || 1;
+  let w = Math.abs(rawDx);
+  let h = Math.abs(rawDy);
+
+  if (isShift) {
+    const aspect = origW / origH;
+    if ((w / origW) > (h / origH)) {
+      h = Math.round(w / aspect);
+    } else {
+      w = Math.round(h * aspect);
+    }
+
+    const maxW = signX > 0 ? (hitlState.imgWidth - anchorX) : anchorX;
+    const maxH = signY > 0 ? (hitlState.imgHeight - anchorY) : anchorY;
+
+    if (w > maxW) {
+      w = maxW;
+      h = Math.round(w / aspect);
+    }
+    if (h > maxH) {
+      h = maxH;
+      w = Math.round(h * aspect);
+    }
+  } else {
+    const maxW = signX > 0 ? (hitlState.imgWidth - anchorX) : anchorX;
+    const maxH = signY > 0 ? (hitlState.imgHeight - anchorY) : anchorY;
+    w = Math.min(w, maxW);
+    h = Math.min(h, maxH);
+  }
+
+  w = Math.max(4, w);
+  h = Math.max(4, h);
+
+  let targetX = anchorX + signX * w;
+  let targetY = anchorY + signY * h;
+
+  targetX = Math.max(0, Math.min(hitlState.imgWidth, targetX));
+  targetY = Math.max(0, Math.min(hitlState.imgHeight, targetY));
+
+  return [
+    Math.min(anchorX, targetX),
+    Math.min(anchorY, targetY),
+    Math.max(anchorX, targetX),
+    Math.max(anchorY, targetY)
+  ];
+}
+
+function createNewHitlSelection(startX, startY) {
+  const color = HITL_SELECTION_COLORS[hitlState.colorIndex % HITL_SELECTION_COLORS.length];
+  hitlState.colorIndex++;
+
+  const newIndex = hitlState.selections.length + 1;
+  const name = `prop_${newIndex}`;
+
+  const newSel = {
+    id: 'sel_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    name: name,
+    box: [startX, startY, startX, startY],
+    color: color,
+    scale: hitlState.selectedScale,
+    isOpaque: hitlState.isOpaque
+  };
+
+  hitlState.selections.push(newSel);
+  hitlState.activeId = newSel.id;
+  return newSel;
+}
+
+function createSameHitlSelection() {
+  if (!hitlState.image) {
+    if (hitlStatusMsg) hitlStatusMsg.textContent = 'Please open an image first.';
+    return;
+  }
+
+  let baseSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+  if (!baseSel && hitlState.selections.length > 0) {
+    baseSel = hitlState.selections[hitlState.selections.length - 1];
+  }
+
+  if (!baseSel) {
+    if (hitlStatusMsg) hitlStatusMsg.textContent = 'No previous selection to clone size from. Create a selection first.';
+    return;
+  }
+
+  const [bx1, by1, bx2, by2] = baseSel.box;
+  const w = Math.max(4, bx2 - bx1);
+  const h = Math.max(4, by2 - by1);
+
+  let startX = bx2 + 10;
+  let startY = by1;
+
+  if (startX + w > hitlState.imgWidth) {
+    startX = 10;
+    startY = by2 + 10;
+  }
+
+  if (startY + h > hitlState.imgHeight) {
+    startX = 10;
+    startY = 10;
+  }
+
+  const color = HITL_SELECTION_COLORS[hitlState.colorIndex % HITL_SELECTION_COLORS.length];
+  hitlState.colorIndex++;
+  const newIndex = hitlState.selections.length + 1;
+  const name = `prop_${newIndex}`;
+
+  const newSel = {
+    id: 'sel_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+    name: name,
+    box: [startX, startY, startX + w, startY + h],
+    color: color,
+    scale: baseSel.scale || hitlState.selectedScale,
+    isOpaque: baseSel.isOpaque || false
+  };
+
+  hitlState.selections.push(newSel);
+  setActiveHitlSelection(newSel.id);
+  if (hitlStatusMsg) hitlStatusMsg.textContent = `Cloned selection size: ${w}×${h} px`;
+}
+
+function setActiveHitlSelection(id) {
+  hitlState.activeId = id;
+  const activeSel = hitlState.selections.find(s => s.id === id);
+  if (activeSel) {
+    hitlState.selectedScale = activeSel.scale;
+    hitlState.isOpaque = activeSel.isOpaque;
+  }
+  updateHitlInspector();
+  updateHitlSelectionsListUI();
+  renderHitl();
+}
+
+function deleteHitlSelection(id) {
+  const idx = hitlState.selections.findIndex(s => s.id === id);
+  if (idx === -1) return;
+  hitlState.selections.splice(idx, 1);
+  if (hitlState.activeId === id) {
+    hitlState.activeId = hitlState.selections.length > 0 ? hitlState.selections[hitlState.selections.length - 1].id : null;
+  }
+  updateHitlInspector();
+  updateHitlSelectionsListUI();
+  renderHitl();
+}
+
+function applyHitlScale(scaleVal, syncInput = true, syncSlider = true) {
+  hitlState.selectedScale = scaleVal;
+  if (syncInput && hitlScaleInput) hitlScaleInput.value = hitlFormatScale(scaleVal);
+  if (syncSlider && hitlScaleSlider) hitlScaleSlider.value = Math.min(48, Math.max(1, scaleVal));
+  if (hitlSliderValDisplay) hitlSliderValDisplay.textContent = `${hitlFormatScale(scaleVal)}x`;
+
+  document.querySelectorAll('.hitl-scale-btn').forEach(btn => {
+    const btnScale = parseFloat(btn.dataset.scale);
+    btn.classList.toggle('active', btnScale === scaleVal);
+  });
+
+  const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+  if (activeSel) {
+    activeSel.scale = scaleVal;
+  }
+  updateHitlInspector();
+  updateHitlSelectionsListUI();
+  renderHitl();
+}
+
+function updateHitlInspector(syncList = true) {
+  const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+  const hasActive = Boolean(activeSel);
+
+  if (hitlActiveBadge) {
+    if (hasActive) {
+      hitlActiveBadge.textContent = activeSel.name || 'ACTIVE';
+      hitlActiveBadge.className = 'hitl-prop-badge';
+      hitlActiveBadge.style.color = activeSel.color;
+      hitlActiveBadge.style.background = 'rgba(0, 240, 255, 0.15)';
+    } else {
+      hitlActiveBadge.textContent = 'NONE';
+      hitlActiveBadge.className = 'prop-item-badge hitl-badge-none';
+      hitlActiveBadge.style.color = '';
+      hitlActiveBadge.style.background = '';
+    }
+  }
+
+  [hitlPropName, hitlBoxX1, hitlBoxY1, hitlBoxX2, hitlBoxY2, hitlIsOpaque, hitlBtnDownloadCurrent, hitlBtnUpscaleCurrent, hitlBtnSendToSnapper, hitlBtnDeleteSelection].forEach(el => {
+    if (el) el.disabled = !hasActive;
+  });
+
+  if (hitlBtnDownloadAll) hitlBtnDownloadAll.disabled = hitlState.selections.length === 0;
+  if (hitlBtnUpscaleAll) hitlBtnUpscaleAll.disabled = hitlState.selections.length === 0;
+
+  if (hasActive) {
+    if (hitlPropName) hitlPropName.value = activeSel.name || '';
+    if (hitlBoxX1) hitlBoxX1.value = activeSel.box[0];
+    if (hitlBoxY1) hitlBoxY1.value = activeSel.box[1];
+    if (hitlBoxX2) hitlBoxX2.value = activeSel.box[2];
+    if (hitlBoxY2) hitlBoxY2.value = activeSel.box[3];
+    if (hitlIsOpaque) hitlIsOpaque.checked = Boolean(activeSel.isOpaque);
+
+    const w = Math.max(0, activeSel.box[2] - activeSel.box[0]);
+    const h = Math.max(0, activeSel.box[3] - activeSel.box[1]);
+    if (hitlRawCropDims) hitlRawCropDims.textContent = `${w} × ${h} px`;
+
+    const scale = activeSel.scale || hitlState.selectedScale;
+    const finalW = Math.round(w * scale);
+    const finalH = Math.round(h * scale);
+    if (hitlPredictedCropDims) hitlPredictedCropDims.textContent = `${finalW} × ${finalH} px`;
+
+    const fn = hitlComputeFilename(activeSel.name, scale, activeSel.isOpaque);
+    if (hitlFilenamePreview) hitlFilenamePreview.textContent = fn;
+  } else {
+    if (hitlPropName) hitlPropName.value = '';
+    if (hitlBoxX1) hitlBoxX1.value = '';
+    if (hitlBoxY1) hitlBoxY1.value = '';
+    if (hitlBoxX2) hitlBoxX2.value = '';
+    if (hitlBoxY2) hitlBoxY2.value = '';
+    if (hitlIsOpaque) hitlIsOpaque.checked = false;
+    if (hitlRawCropDims) hitlRawCropDims.textContent = '0 × 0 px';
+    if (hitlPredictedCropDims) hitlPredictedCropDims.textContent = '0 × 0 px';
+    if (hitlFilenamePreview) hitlFilenamePreview.textContent = '-';
+  }
+
+  if (hitlSelectionsCount) hitlSelectionsCount.textContent = hitlState.selections.length;
+  if (syncList) updateHitlSelectionsListUI();
+}
+
+function updateHitlSelectionsListUI() {
+  if (!hitlSelectionsList) return;
+  hitlSelectionsList.innerHTML = '';
+
+  if (hitlState.selections.length === 0) {
+    hitlSelectionsList.innerHTML = `
+      <div class="hitl-empty-hint">
+        No selections yet.<br>
+        Drag on the canvas (or click <strong>+ NEW</strong>) to select asset bounding boxes.<br>
+        <small>💡 Hold <b>Shift</b> for 1:1 square crop or ratio lock</small>
+      </div>`;
+    return;
+  }
+
+  hitlState.selections.forEach(item => {
+    const isAct = item.id === hitlState.activeId;
+    const [x1, y1, x2, y2] = item.box;
+    const w = x2 - x1;
+    const h = y2 - y1;
+    const filename = hitlComputeFilename(item.name, item.scale, item.isOpaque);
+
+    const div = document.createElement('div');
+    div.className = `hitl-prop-item ${isAct ? 'selected' : ''}`;
+    div.style.borderLeft = `4px solid ${item.color}`;
+
+    div.innerHTML = `
+      <div class="hitl-prop-info">
+        <div class="hitl-prop-name">${item.name || 'prop'}</div>
+        <div class="hitl-prop-sub">
+          <span>${w}×${h}</span>
+          <span class="hitl-prop-badge">${hitlFormatScale(item.scale)}x</span>
+          ${item.isOpaque ? '<span class="hitl-prop-badge opaque">OPAQUE</span>' : ''}
+        </div>
+      </div>
+      <div style="display:flex; gap:3px;">
+        <button type="button" class="btn-tool-sm" data-dl title="Download Crop (Raw)">💾</button>
+        <button type="button" class="btn-tool-sm" data-del title="Delete" style="color:var(--accent-magenta);">&#215;</button>
+      </div>`;
+
+    div.addEventListener('click', (e) => {
+      if (e.target.dataset.del !== undefined || e.target.dataset.dl !== undefined) return;
+      setActiveHitlSelection(item.id);
+    });
+
+    div.querySelector('button[data-dl]').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const blob = await getHitlCroppedBlob(item.box);
+      if (blob) hitlDownloadBlob(blob, filename);
+    });
+
+    div.querySelector('button[data-del]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteHitlSelection(item.id);
+    });
+
+    hitlSelectionsList.appendChild(div);
+  });
+}
+
+function drawHitlSelectionBox(sel, isActive) {
+  if (!hitlCtx) return;
+  const [x1, y1, x2, y2] = sel.box;
+  const w = x2 - x1;
+  const h = y2 - y1;
+
+  hitlCtx.save();
+
+  hitlCtx.fillStyle = sel.color;
+  hitlCtx.globalAlpha = isActive ? 0.22 : 0.10;
+  hitlCtx.fillRect(x1, y1, w, h);
+
+  hitlCtx.globalAlpha = 1.0;
+  hitlCtx.strokeStyle = sel.color;
+  hitlCtx.lineWidth = (isActive ? 2.5 : 1.5) / hitlState.zoom;
+  if (!isActive) {
+    hitlCtx.setLineDash([5 / hitlState.zoom, 4 / hitlState.zoom]);
+  } else {
+    hitlCtx.setLineDash([]);
+  }
+  hitlCtx.strokeRect(x1, y1, w, h);
+  hitlCtx.setLineDash([]);
+
+  const fontSize = Math.max(10, Math.min(18, 12 / hitlState.zoom));
+  hitlCtx.font = `bold ${fontSize}px var(--font-mono, monospace)`;
+  const labelText = `${sel.name || 'prop'} (${w}×${h} px, ${hitlFormatScale(sel.scale)}x)`;
+  const textMetrics = hitlCtx.measureText(labelText);
+  const paddingH = 5 / hitlState.zoom;
+  const paddingV = 3 / hitlState.zoom;
+  const badgeW = textMetrics.width + paddingH * 2;
+  const badgeH = fontSize + paddingV * 2;
+
+  let badgeY = y1 - badgeH - 2 / hitlState.zoom;
+  if (badgeY < 0) {
+    badgeY = y1 + 2 / hitlState.zoom;
+  }
+
+  hitlCtx.fillStyle = 'rgba(11, 14, 20, 0.92)';
+  hitlCtx.fillRect(x1, badgeY, badgeW, badgeH);
+  hitlCtx.strokeStyle = sel.color;
+  hitlCtx.lineWidth = 1 / hitlState.zoom;
+  hitlCtx.strokeRect(x1, badgeY, badgeW, badgeH);
+
+  hitlCtx.fillStyle = sel.color;
+  hitlCtx.textBaseline = 'top';
+  hitlCtx.fillText(labelText, x1 + paddingH, badgeY + paddingV);
+
+  if (isActive) {
+    const hSize = 8 / hitlState.zoom;
+    const halfH = hSize / 2;
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+
+    const handles = [
+      { x: x1, y: y1 },
+      { x: midX, y: y1 },
+      { x: x2, y: y1 },
+      { x: x2, y: midY },
+      { x: x2, y: y2 },
+      { x: midX, y: y2 },
+      { x: x1, y: y2 },
+      { x: x1, y: midY }
+    ];
+
+    handles.forEach(hnd => {
+      hitlCtx.fillStyle = '#ffffff';
+      hitlCtx.fillRect(hnd.x - halfH, hnd.y - halfH, hSize, hSize);
+      hitlCtx.strokeStyle = sel.color;
+      hitlCtx.lineWidth = 2 / hitlState.zoom;
+      hitlCtx.strokeRect(hnd.x - halfH, hnd.y - halfH, hSize, hSize);
+    });
+  }
+
+  hitlCtx.restore();
+}
+
+function renderHitl() {
+  if (!hitlCtx || !hitlCanvas) return;
+  hitlCtx.clearRect(0, 0, hitlCanvas.width, hitlCanvas.height);
+
+  if (!hitlState.image) {
+    hitlCtx.fillStyle = '#484f58';
+    hitlCtx.font = '14px var(--font-mono, monospace)';
+    hitlCtx.textAlign = 'center';
+    hitlCtx.fillText('Click "OPEN CONCEPT ART..." or drag and drop an image here.', hitlCanvas.width / 2, hitlCanvas.height / 2);
+    return;
+  }
+
+  hitlCtx.save();
+  hitlCtx.translate(hitlState.panX, hitlState.panY);
+  hitlCtx.scale(hitlState.zoom, hitlState.zoom);
+
+  hitlCtx.drawImage(hitlState.image, 0, 0);
+
+  hitlState.selections.forEach(sel => {
+    if (sel.id === hitlState.activeId) return;
+    drawHitlSelectionBox(sel, false);
+  });
+
+  const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+  if (activeSel) {
+    drawHitlSelectionBox(activeSel, true);
+  }
+
+  hitlCtx.restore();
+}
+
+function getHitlCroppedBlob(box) {
+  if (!hitlState.image) return null;
+  const [x1, y1, x2, y2] = box;
+  const w = Math.max(1, x2 - x1);
+  const h = Math.max(1, y2 - y1);
+
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = w;
+  offCanvas.height = h;
+  const offCtx = offCanvas.getContext('2d');
+  offCtx.drawImage(hitlState.image, x1, y1, w, h, 0, 0, w, h);
+
+  return new Promise((resolve) => {
+    offCanvas.toBlob((blob) => resolve(blob), 'image/png');
+  });
+}
+
+function hitlDownloadBlob(blob, filename) {
+  const u = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = u;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(u), 2000);
+}
+
+// Client-side stepped upscaling fallback
+function hitlClientSideUpscale(blob, scale) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const u = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(u);
+      const targetW = Math.max(1, Math.round(img.width * scale));
+      const targetH = Math.max(1, Math.round(img.height * scale));
+
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = targetW;
+      offCanvas.height = targetH;
+      const offCtx = offCanvas.getContext('2d');
+      offCtx.imageSmoothingEnabled = true;
+      offCtx.imageSmoothingQuality = 'high';
+      offCtx.drawImage(img, 0, 0, targetW, targetH);
+
+      offCanvas.toBlob((b) => resolve(b), 'image/png');
+    };
+    img.onerror = reject;
+    img.src = u;
+  });
+}
+
+// Unified upscale execution (Hardware Vulkan GPU vs Browser Engine)
+async function executeHitlUpscale(item, useLocalHardware) {
+  const filename = hitlComputeFilename(item.name, item.scale, item.isOpaque);
+  const rawBlob = await getHitlCroppedBlob(item.box);
+  if (!rawBlob) throw new Error('Could not extract crop from canvas');
+
+  if (useLocalHardware) {
+    if (hitlStatusMsg) hitlStatusMsg.textContent = `⚡ Running Real-ESRGAN Vulkan Upscale (${item.scale}x) on Local GPU...`;
+    const reader = new FileReader();
+    const base64Promise = new Promise((resolve) => {
+      reader.onload = (e) => resolve(e.target.result);
+      reader.readAsDataURL(rawBlob);
+    });
+    const base64Data = await base64Promise;
+
+    try {
+      const res = await fetch('api/upscale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: base64Data,
+          scale: item.scale,
+          isOpaque: item.isOpaque,
+          name: item.name
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.dataUrl) {
+          const fetchRes = await fetch(data.dataUrl);
+          const upscaledBlob = await fetchRes.blob();
+          return { blob: upscaledBlob, filename: data.filename || filename, engine: 'Real-ESRGAN Vulkan (Local PC GPU)' };
+        }
+      }
+    } catch (err) {
+      console.warn('[HITL Upscale] Local server call failed, falling back to client-side:', err);
+    }
+  }
+
+  // Fallback to high-quality in-browser upscale
+  if (hitlStatusMsg) hitlStatusMsg.textContent = `⚡ In-Browser High-Res Scaling (${item.scale}x)...`;
+  const clientBlob = await hitlClientSideUpscale(rawBlob, item.scale);
+  return { blob: clientBlob, filename, engine: 'In-Browser High-Res Engine' };
+}
+
+// Wire Event Handlers
+if (hitlFilePicker) {
+  hitlFilePicker.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => loadHitlImageFromSrc(evt.target.result, file.name);
+    reader.readAsDataURL(file);
+  });
+}
+
+if (hitlBtnUpload && hitlFilePicker) {
+  hitlBtnUpload.addEventListener('click', () => {
+    hitlFilePicker.value = '';
+    hitlFilePicker.click();
+  });
+}
+
+if (hitlBtnResetZoom) hitlBtnResetZoom.addEventListener('click', hitlResetView);
+
+if (hitlBtnPanMode && hitlContainer) {
+  hitlBtnPanMode.addEventListener('click', () => {
+    hitlState.panMode = !hitlState.panMode;
+    hitlBtnPanMode.classList.toggle('btn-tool-active', hitlState.panMode);
+    hitlContainer.classList.toggle('panning', hitlState.panMode);
+  });
+}
+
+if (hitlPropName) {
+  hitlPropName.addEventListener('input', () => {
+    const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+    if (activeSel) {
+      activeSel.name = hitlPropName.value;
+      updateHitlInspector(true);
+    }
+  });
+}
+
+if (hitlIsOpaque) {
+  hitlIsOpaque.addEventListener('change', () => {
+    const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+    if (activeSel) {
+      activeSel.isOpaque = hitlIsOpaque.checked;
+      updateHitlInspector(true);
+    }
+  });
+}
+
+[hitlBoxX1, hitlBoxY1, hitlBoxX2, hitlBoxY2].forEach(input => {
+  if (input) {
+    input.addEventListener('change', () => {
+      const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+      if (activeSel) {
+        const x1 = parseInt(hitlBoxX1.value, 10) || 0;
+        const y1 = parseInt(hitlBoxY1.value, 10) || 0;
+        const x2 = parseInt(hitlBoxX2.value, 10) || 0;
+        const y2 = parseInt(hitlBoxY2.value, 10) || 0;
+        activeSel.box = [
+          Math.min(x1, x2),
+          Math.min(y1, y2),
+          Math.max(x1, x2),
+          Math.max(y1, y2)
+        ];
+        updateHitlInspector(true);
+        renderHitl();
+      }
+    });
+  }
+});
+
+if (hitlScaleInput) {
+  hitlScaleInput.addEventListener('input', () => {
+    let val = parseFloat(hitlScaleInput.value);
+    if (!isNaN(val) && val >= 1 && val <= 64) {
+      applyHitlScale(val, false, true);
+    }
+  });
+}
+
+if (hitlScaleSlider) {
+  hitlScaleSlider.addEventListener('input', () => {
+    const val = parseFloat(hitlScaleSlider.value);
+    applyHitlScale(val, true, false);
+  });
+}
+
+document.querySelectorAll('.hitl-scale-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const val = parseFloat(btn.dataset.scale);
+    applyHitlScale(val, true, true);
+  });
+});
+
+if (hitlBtnAddSelection) {
+  hitlBtnAddSelection.addEventListener('click', () => {
+    if (!hitlState.image) {
+      if (hitlStatusMsg) hitlStatusMsg.textContent = 'Open an image first.';
+      return;
+    }
+    const margin = 40;
+    const startX = Math.round(hitlState.imgWidth * 0.25);
+    const startY = Math.round(hitlState.imgHeight * 0.25);
+    const endX = Math.round(hitlState.imgWidth * 0.75);
+    const endY = Math.round(hitlState.imgHeight * 0.75);
+
+    const sel = createNewHitlSelection(startX, startY);
+    sel.box = [startX, startY, endX, endY];
+    setActiveHitlSelection(sel.id);
+  });
+}
+
+if (hitlBtnAddSame) hitlBtnAddSame.addEventListener('click', createSameHitlSelection);
+if (hitlBtnDeleteSelection) {
+  hitlBtnDeleteSelection.addEventListener('click', () => {
+    if (hitlState.activeId) deleteHitlSelection(hitlState.activeId);
+  });
+}
+
+if (hitlBtnClearAll) {
+  hitlBtnClearAll.addEventListener('click', () => {
+    if (hitlState.selections.length === 0) return;
+    hitlState.selections = [];
+    hitlState.activeId = null;
+    updateHitlInspector();
+    updateHitlSelectionsListUI();
+    renderHitl();
+    if (hitlStatusMsg) hitlStatusMsg.textContent = 'Cleared all selections.';
+  });
+}
+
+// Download Active Crop (Raw)
+if (hitlBtnDownloadCurrent) {
+  hitlBtnDownloadCurrent.addEventListener('click', async () => {
+    const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+    if (!activeSel) return;
+    const filename = hitlComputeFilename(activeSel.name, activeSel.scale, activeSel.isOpaque);
+    if (hitlStatusMsg) hitlStatusMsg.textContent = `Exporting raw crop: ${filename}...`;
+    const blob = await getHitlCroppedBlob(activeSel.box);
+    if (blob) {
+      hitlDownloadBlob(blob, filename);
+      if (hitlStatusMsg) hitlStatusMsg.textContent = `Downloaded: ${filename}`;
+    }
+  });
+}
+
+// Upscale & Download Active Selection
+if (hitlBtnUpscaleCurrent) {
+  hitlBtnUpscaleCurrent.addEventListener('click', async () => {
+    const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+    if (!activeSel) return;
+    const useLocal = hitlToggleLocalUpscale ? hitlToggleLocalUpscale.checked : false;
+
+    hitlBtnUpscaleCurrent.disabled = true;
+    try {
+      const { blob, filename, engine } = await executeHitlUpscale(activeSel, useLocal);
+      hitlState.lastProcessedBlob = blob;
+      hitlState.lastProcessedFilename = filename;
+      hitlDownloadBlob(blob, filename);
+      if (hitlStatusMsg) hitlStatusMsg.textContent = `✓ Successfully upscaled via ${engine}: ${filename}`;
+    } catch (err) {
+      console.error(err);
+      if (hitlStatusMsg) hitlStatusMsg.textContent = `Upscale failed: ${err.message}`;
+    } finally {
+      hitlBtnUpscaleCurrent.disabled = false;
+    }
+  });
+}
+
+// Send to Pixel Snapper Studio
+if (hitlBtnSendToSnapper) {
+  hitlBtnSendToSnapper.addEventListener('click', async () => {
+    const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+    if (!activeSel) return;
+
+    let targetBlob = hitlState.lastProcessedBlob;
+    let targetFilename = hitlState.lastProcessedFilename || hitlComputeFilename(activeSel.name, activeSel.scale, activeSel.isOpaque);
+
+    if (!targetBlob) {
+      targetBlob = await getHitlCroppedBlob(activeSel.box);
+    }
+    if (!targetBlob) return;
+
+    const file = new File([targetBlob], targetFilename, { type: 'image/png' });
+    if (typeof loadImage === 'function') {
+      await loadImage(file, false);
+    }
+
+    // Switch to Pixel Snapper tab
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    const snapperBtn = document.querySelector('[data-tab="tab-snapper"]');
+    const snapperTab = document.getElementById('tab-snapper');
+    if (snapperBtn) snapperBtn.classList.add('active');
+    if (snapperTab) snapperTab.classList.add('active');
+
+    if (hitlStatusMsg) hitlStatusMsg.textContent = `Transferred "${targetFilename}" to Pixel Snapper Studio!`;
+  });
+}
+
+// Download All Crops
+if (hitlBtnDownloadAll) {
+  hitlBtnDownloadAll.addEventListener('click', async () => {
+    if (hitlState.selections.length === 0) return;
+    if (hitlStatusMsg) hitlStatusMsg.textContent = `Exporting ${hitlState.selections.length} crops sequentially...`;
+    for (let i = 0; i < hitlState.selections.length; i++) {
+      const item = hitlState.selections[i];
+      const blob = await getHitlCroppedBlob(item.box);
+      if (blob) {
+        const filename = hitlComputeFilename(item.name, item.scale, item.isOpaque);
+        hitlDownloadBlob(blob, filename);
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
+    if (hitlStatusMsg) hitlStatusMsg.textContent = `All ${hitlState.selections.length} crops downloaded!`;
+  });
+}
+
+// Batch Upscale All
+if (hitlBtnUpscaleAll) {
+  hitlBtnUpscaleAll.addEventListener('click', async () => {
+    if (hitlState.selections.length === 0) return;
+    const useLocal = hitlToggleLocalUpscale ? hitlToggleLocalUpscale.checked : false;
+    hitlBtnUpscaleAll.disabled = true;
+
+    try {
+      for (let i = 0; i < hitlState.selections.length; i++) {
+        const item = hitlState.selections[i];
+        if (hitlStatusMsg) hitlStatusMsg.textContent = `Batch upscaling crop ${i + 1}/${hitlState.selections.length} (${item.name})...`;
+        const { blob, filename } = await executeHitlUpscale(item, useLocal);
+        hitlDownloadBlob(blob, filename);
+        await new Promise(r => setTimeout(r, 300));
+      }
+      if (hitlStatusMsg) hitlStatusMsg.textContent = `✓ Batch upscale complete: ${hitlState.selections.length} assets upscaled and exported!`;
+    } catch (err) {
+      console.error(err);
+      if (hitlStatusMsg) hitlStatusMsg.textContent = `Batch upscale halted: ${err.message}`;
+    } finally {
+      hitlBtnUpscaleAll.disabled = false;
+    }
+  });
+}
+
+// Canvas Mouse and Touch Interactions
+if (hitlContainer && hitlCanvas) {
+  hitlContainer.addEventListener('mousedown', (e) => {
+    if (!hitlState.image) return;
+
+    if (e.button === 1 || hitlState.isSpaceDown || hitlState.panMode) {
+      hitlState.isPanning = true;
+      hitlState.panStart = { x: e.clientX - hitlState.panX, y: e.clientY - hitlState.panY };
+      hitlContainer.classList.add('panning');
+      return;
+    }
+
+    if (e.button !== 0) return;
+
+    const imgPt = hitlScreenToImage(e.clientX, e.clientY);
+    const hit = getHitlHitInfo(e.clientX, e.clientY);
+
+    if (!hit) {
+      const newSel = createNewHitlSelection(imgPt.x, imgPt.y);
+      hitlState.dragMode = 'create';
+      hitlState.drawStart = { x: imgPt.x, y: imgPt.y };
+      hitlState.initialBox = [...newSel.box];
+      renderHitl();
+      updateHitlCursor(e);
+      return;
+    }
+
+    if (hit.type === 'select') {
+      setActiveHitlSelection(hit.sel.id);
+      hitlState.dragMode = 'move';
+      hitlState.dragStartImagePt = imgPt;
+      hitlState.initialBox = [...hit.sel.box];
+    } else if (hit.type === 'move') {
+      hitlState.dragMode = 'move';
+      hitlState.dragStartImagePt = imgPt;
+      hitlState.initialBox = [...hit.sel.box];
+    } else {
+      hitlState.dragMode = hit.type;
+      hitlState.initialBox = [...hit.sel.box];
+      hitlState.dragStartImagePt = imgPt;
+    }
+
+    updateHitlCursor(e);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (hitlHudCoords) {
+      const pt = hitlScreenToImage(e.clientX, e.clientY);
+      hitlHudCoords.textContent = `${pt.x}, ${pt.y}`;
+    }
+
+    if (hitlState.isPanning) {
+      hitlState.panX = e.clientX - hitlState.panStart.x;
+      hitlState.panY = e.clientY - hitlState.panStart.y;
+      renderHitl();
+      return;
+    }
+
+    if (hitlState.dragMode) {
+      const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+      if (!activeSel) return;
+
+      const currentPt = hitlScreenToImage(e.clientX, e.clientY);
+
+      if (hitlState.dragMode === 'create') {
+        activeSel.box = computeHitlCreation(hitlState.drawStart, currentPt, e.shiftKey);
+      } else if (hitlState.dragMode === 'move') {
+        activeSel.box = computeHitlMove(hitlState.initialBox, hitlState.dragStartImagePt, currentPt);
+      } else if (['n', 's', 'e', 'w'].includes(hitlState.dragMode)) {
+        activeSel.box = computeHitlEdgeResize(hitlState.dragMode, hitlState.initialBox, currentPt);
+      } else if (['nw', 'ne', 'se', 'sw'].includes(hitlState.dragMode)) {
+        const [ox1, oy1, ox2, oy2] = hitlState.initialBox;
+        const origW = ox2 - ox1;
+        const origH = oy2 - oy1;
+        let anchorX, anchorY;
+
+        switch (hitlState.dragMode) {
+          case 'nw': anchorX = ox2; anchorY = oy2; break;
+          case 'ne': anchorX = ox1; anchorY = oy2; break;
+          case 'se': anchorX = ox1; anchorY = oy1; break;
+          case 'sw': anchorX = ox2; anchorY = oy1; break;
+        }
+
+        activeSel.box = computeHitlCornerResize(anchorX, anchorY, currentPt, origW, origH, e.shiftKey);
+      }
+
+      updateHitlInspector(false);
+      renderHitl();
+      return;
+    }
+
+    updateHitlCursor(e);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (hitlState.isPanning) {
+      hitlState.isPanning = false;
+      if (hitlContainer) hitlContainer.classList.remove('panning');
+      return;
+    }
+
+    if (hitlState.dragMode) {
+      const activeSel = hitlState.selections.find(s => s.id === hitlState.activeId);
+      if (activeSel) {
+        const [x1, y1, x2, y2] = activeSel.box;
+        activeSel.box = [
+          Math.min(x1, x2),
+          Math.min(y1, y2),
+          Math.max(x1, x2),
+          Math.max(y1, y2)
+        ];
+        if (activeSel.box[2] - activeSel.box[0] < 4 && activeSel.box[3] - activeSel.box[1] < 4) {
+          deleteHitlSelection(activeSel.id);
+        }
+      }
+      hitlState.dragMode = null;
+      updateHitlInspector(true);
+      renderHitl();
+    }
+  });
+
+  hitlContainer.addEventListener('wheel', (e) => {
+    if (!hitlState.image) return;
+    e.preventDefault();
+
+    const zoomFactor = 1.15;
+    const rect = hitlCanvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const oldZoom = hitlState.zoom;
+    const newZoom = e.deltaY < 0
+      ? Math.min(32.0, oldZoom * zoomFactor)
+      : Math.max(0.05, oldZoom / zoomFactor);
+
+    hitlState.panX = mouseX - (mouseX - hitlState.panX) * (newZoom / oldZoom);
+    hitlState.panY = mouseY - (mouseY - hitlState.panY) * (newZoom / oldZoom);
+    hitlState.zoom = newZoom;
+
+    if (hitlHudZoom) hitlHudZoom.textContent = `${Math.round(hitlState.zoom * 100)}%`;
+    renderHitl();
+  }, { passive: false });
+}
+
+// Drag & Drop files directly onto workspace
+window.addEventListener('dragover', (e) => {
+  if (e.target && (e.target === hitlCanvas || (hitlContainer && hitlContainer.contains(e.target)))) {
+    e.preventDefault();
+  }
+});
+
+window.addEventListener('drop', (e) => {
+  if (e.target && (e.target === hitlCanvas || (hitlContainer && hitlContainer.contains(e.target)))) {
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      const reader = new FileReader();
+      reader.onload = (evt) => loadHitlImageFromSrc(evt.target.result, file.name);
+      reader.readAsDataURL(file);
+    }
+  }
+});
+
+// Ambient Keyboard Shortcuts for Extractor
+window.addEventListener('keydown', (e) => {
+  const activeEl = document.activeElement;
+  if (activeEl && (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName) || activeEl.isContentEditable)) {
+    return;
+  }
+
+  if (e.code === 'Space' && !hitlState.isSpaceDown) {
+    hitlState.isSpaceDown = true;
+    if (hitlContainer) hitlContainer.classList.add('panning');
+  }
+
+  if ((e.key === 'Delete' || e.key === 'Backspace') && hitlState.activeId) {
+    deleteHitlSelection(hitlState.activeId);
+  }
+
+  if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    createSameHitlSelection();
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') {
+    hitlState.isSpaceDown = false;
+    if (hitlContainer && !hitlState.panMode) hitlContainer.classList.remove('panning');
+  }
+});
+
+// Connect Tab Switch Listener
+if (tabBtnExtractor) {
+  tabBtnExtractor.addEventListener('click', () => {
+    setTimeout(resizeHitlCanvas, 60);
+  });
+}
+
+// Check Backend GPU Status
+async function checkSystemUpscaleStatus() {
+  try {
+    const res = await fetch('api/upscale/status');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.hasRealEsrgan) {
+        hitlState.gpuAvailable = true;
+        if (hitlGpuStatusBadge) {
+          hitlGpuStatusBadge.textContent = '⚡ GPU: REAL-ESRGAN VULKAN';
+          hitlGpuStatusBadge.classList.remove('unavailable');
+        }
+        if (hitlToggleLocalUpscale) {
+          hitlToggleLocalUpscale.checked = true;
+        }
+        return;
+      }
+    }
+  } catch (e) {}
+  hitlState.gpuAvailable = false;
+  if (hitlGpuStatusBadge) {
+    hitlGpuStatusBadge.textContent = '🌐 CLIENT-SIDE ONLY';
+    hitlGpuStatusBadge.classList.add('unavailable');
+  }
+  if (hitlToggleLocalUpscale) {
+    hitlToggleLocalUpscale.checked = false;
+  }
+}
+
+checkSystemUpscaleStatus();
+window.addEventListener('resize', resizeHitlCanvas);
+

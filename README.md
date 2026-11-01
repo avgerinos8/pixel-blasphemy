@@ -30,6 +30,18 @@ The entire processing pipeline runs client-side in the browser via Canvas 2D and
 - **Dual Engine Pipeline**:
   - **Pixel Snapper**: Sprite Fusion grid-snapping algorithm with integer downsampling (`/2`, `/4`, `/8`, `/16`, `1x`).
   - **Unfake Engine**: Multi-scale analysis combining autocorrelation, runs-based detection, and morphological cleanup.
+- **HITL Asset Studio & Extractor (New Public Tab)**:
+  - Interactive Human-In-The-Loop canvas studio for extracting props, tiles, and character sprites directly from concept art.
+  - Interactive bounding boxes with 8-point resize handles, Shift key ratio locking (1:1 square & corner aspect lock), spatial movement, and quick clone (`+ Same Size`, hotkey `S`).
+  - Streets of Regex naming rules (`${scale}x_${opaque ? 'opaque_' : ''}${name}.png`) with predicted native super-resolution preview.
+  - One-click **"Send to Pixel Snapper"** bridge: immediately pipes any extracted or upscaled asset straight into the Snapper Studio for grid snapping, palette quantization, and retro export.
+- **Super-Resolution Upscaling (Toggleable Local Hardware / In-Browser)**:
+  - **Local PC Hardware Acceleration (Real-ESRGAN Vulkan GPU)**:
+    - Dedicated local GPU super-resolution pipeline with multi-pass chaining (`2x`, `4x`, `6x`, `8x`, `12x`, `16x`, `24x`, `32x`, `48x`).
+    - Conditional background isolation: automatically applies `rembg birefnet-general` alpha matting and ImageMagick/Pillow trimming unless marked `Opaque`.
+    - `Opaque` flag skips background removal to preserve textures, solid walls, and floor tiles.
+  - **Client-Side In-Memory Engine**:
+    - Toggleable switch in the UI: turn off local hardware resources (or run offline/statically on GitHub Pages) for instantaneous client-side in-browser canvas upscaling.
 - **Smart Outline Healer**:
   - High-res ridge / skeleton tracing restores broken contours and thin 1px silhouettes without pixel clumping.
 - **Palette Architecture**:
@@ -84,12 +96,12 @@ python tools/pixel_snapper.py ./input_dir ./output_dir --grid 64 --colors 16
 
 ## Testing
 
-PixelBlasphemy includes a comprehensive test suite covering DOM integrity, color space math, K-Means clustering, GPL parser robustness, spline LUT curves, and server APIs:
+PixelBlasphemy includes a comprehensive test suite covering DOM integrity, color space math, K-Means clustering, GPL parser robustness, spline LUT curves, HITL filename rules, server APIs, and Vulkan GPU upscaler integration:
 
 ```bash
 npm test
 ```
-Runs 46 automated unit and integration tests (zero extra npm dependencies).
+Runs 50 automated unit and integration tests (zero extra npm dependencies).
 
 ---
 
@@ -98,18 +110,19 @@ Runs 46 automated unit and integration tests (zero extra npm dependencies).
 ```text
 pixel-blasphemy/
 ├── app/                  # Web application (HTML, CSS, JavaScript, WASM)
-│   ├── index.html        # Main viewport interface
-│   ├── app.js            # Core application logic & image processing
-│   ├── style.css         # Styling & responsive design tokens
+│   ├── index.html        # Main interface (Pixel Snapper & HITL Asset Studio tabs)
+│   ├── app.js            # Core application logic, canvas studio & upscale pipeline
+│   ├── style.css         # Cyberpunk styling & responsive design tokens
 │   ├── unfake-engine.js  # WASM & pure JS grid detection engine
 │   └── vendor/           # Local client-side dependencies
-├── server.js             # Local Node.js server with GPL & preset disk API
+├── server.js             # Local Node.js server with Real-ESRGAN Vulkan GPU & GPL disk API
 ├── tools/
-│   └── pixel_snapper.py  # Standalone Python CLI / batch processing tool
+│   ├── pixel_snapper.py  # Standalone Python CLI / batch processing tool
+│   └── realesrgan/       # Real-ESRGAN Vulkan GPU binary & neural models
 ├── test/
-│   ├── unit.test.js      # Core algorithm unit tests (26 tests)
+│   ├── unit.test.js      # Core algorithm & HITL extractor unit tests (32 tests)
 │   ├── integrity.test.js # HTML/CSS/JS structural integrity tests (7 tests)
-│   ├── server.test.js    # Backend API integration tests (9 tests)
+│   ├── server.test.js    # Backend API & GPU upscale integration tests (11 tests)
 │   ├── python_tool.test.py # Python CLI test suite (4 tests)
 │   └── run_all.js        # Test runner
 ├── Launch-PixelBlasphemy.bat # Windows one-click launcher
